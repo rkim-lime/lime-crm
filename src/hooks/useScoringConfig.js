@@ -59,13 +59,20 @@ export function useUpdateScoringConfig() {
   return useMutation({
     mutationFn: async ({ scoreType, criteria }) => {
       const userId = session?.user?.id;
+      const now = new Date().toISOString();
       const rows = criteria.map(c => ({
-        score_type:   scoreType,
-        tier:         c.tier ?? 'enterprise',
-        criterion_key: c.criterion_key,
-        weight:       c.weight,
-        is_active:    c.is_active ?? true,
-        updated_by:   userId,
+        score_type:           scoreType,
+        tier:                 c.tier ?? 'enterprise',
+        criterion_key:        c.criterion_key,
+        label:                c.label,
+        description:          c.description,
+        weight:               c.weight,
+        is_active:            c.is_active ?? true,
+        sort_order:           c.sort_order,
+        requires_integration: c.requires_integration ?? false,
+        integration_label:    c.integration_label ?? null,
+        updated_by:           userId,
+        updated_at:           now,
       }));
       const { error } = await supabase
         .from('scoring_config')

@@ -363,12 +363,8 @@ export default function ScoringConfig() {
 
   const handleSave = async () => {
     const criteria = typeCriteria.map(c => ({
-      criterion_key:     c.criterion_key,
-      weight:            Number(c.weight) || 0,
-      is_active:         c.is_active,
-      tier:              c.tier,
-      requires_integration: c.requires_integration,
-      integration_label: c.integration_label,
+      ...c,
+      weight: Number(c.weight) || 0,
     }));
     try {
       await saveConfig.mutateAsync({ scoreType: activeTab, criteria });
