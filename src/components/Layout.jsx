@@ -16,15 +16,15 @@ const STATIC_NAV_SECTIONS = [
       { to: '/pipeline/enterprise', label: 'Enterprise', icon: '⬡' },
       { to: '/pipeline/pro',        label: 'Pro',         icon: '⬡' },
       { to: '/pipeline/individual', label: 'Individual',  icon: '⬡' },
-      { to: '/deals',               label: 'Deals',       icon: '◎', prefix: true },
     ],
   },
   {
-    label: 'Leads & Contacts',
+    label: 'Records',
     items: [
       { to: '/leads',    label: 'Leads',    icon: '◈', prefix: true },
-      { to: '/accounts', label: 'Accounts', icon: '⬜', prefix: true },
       { to: '/contacts', label: 'Contacts', icon: '◯', prefix: true },
+      { to: '/accounts', label: 'Accounts', icon: '⬜', prefix: true },
+      { to: '/deals',    label: 'Deals',    icon: '◎', prefix: true },
     ],
   },
   {
