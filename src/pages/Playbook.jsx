@@ -226,7 +226,7 @@ function StartNode({ label, sub }) {
         boxShadow: 'var(--shadow-sm)',
       }}>
         {label}
-        {sub && <span style={{ fontSize: 11, opacity: 0.6, fontWeight: 400 }}>{sub}</span>}
+        {sub && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', fontWeight: 400 }}>{sub}</span>}
       </div>
     </div>
   );
@@ -302,27 +302,27 @@ function DecisionNode({ question, branches }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center' }}>
       <div style={{
-        background: '#fffbeb',
-        border: '2px dashed #fcd34d',
+        background: 'var(--bg-secondary)',
+        border: '2px dashed var(--border)',
         borderRadius: 8,
         padding: '12px 20px',
         maxWidth: 480,
         width: '100%',
         textAlign: 'center',
       }}>
-        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#b45309', marginBottom: 5 }}>
+        <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 5 }}>
           Decision Point
         </div>
-        <div style={{ fontWeight: 600, fontSize: 14, color: '#92400e', marginBottom: 12 }}>{question}</div>
+        <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', marginBottom: 12 }}>{question}</div>
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
           {branches.map((b, i) => (
             <span key={i} style={{
               fontSize: 12,
-              background: b.primary ? 'var(--bg-tertiary)' : '#fef3c7',
-              border: `1px solid ${b.primary ? 'var(--border)' : '#fcd34d'}`,
+              background: 'var(--bg-primary)',
+              border: '1px solid var(--border)',
               borderRadius: 20,
               padding: '3px 12px',
-              color: b.primary ? 'var(--text-secondary)' : '#92400e',
+              color: 'var(--text-secondary)',
               fontWeight: b.primary ? 400 : 500,
             }}>
               {b.label}
