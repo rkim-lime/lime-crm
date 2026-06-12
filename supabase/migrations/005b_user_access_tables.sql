@@ -1,15 +1,12 @@
 -- ============================================================
--- Migration 005: User access management
+-- Migration 005b: User access management (run AFTER 005a)
 -- ============================================================
 
--- ── 1. Add 'pending' role ─────────────────────────────────────
-ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'pending' AFTER 'analyst';
-
--- ── 2. Change default role to 'pending' ──────────────────────
+-- ── 1. Change default role to 'pending' ──────────────────────
 ALTER TABLE public.profiles
   ALTER COLUMN role SET DEFAULT 'pending';
 
--- ── 3. Add access-management columns to profiles ─────────────
+-- ── 2. Add access-management columns to profiles ─────────────
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS is_active       boolean     NOT NULL DEFAULT true,
   ADD COLUMN IF NOT EXISTS last_sign_in    timestamptz,
@@ -18,7 +15,7 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS deactivated_at  timestamptz,
   ADD COLUMN IF NOT EXISTS deactivated_by  uuid        REFERENCES public.profiles(id) ON DELETE SET NULL;
 
--- ── 4. invitations table ──────────────────────────────────────
+-- ── 3. invitations table ──────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.invitations (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   email       text        NOT NULL,
@@ -34,7 +31,7 @@ CREATE TABLE IF NOT EXISTS public.invitations (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
--- ── 5. RLS on invitations ─────────────────────────────────────
+-- ── 4. RLS on invitations ─────────────────────────────────────
 ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "invitations_select" ON public.invitations;
@@ -50,7 +47,7 @@ CREATE POLICY "invitations_insert" ON public.invitations
 CREATE POLICY "invitations_update" ON public.invitations
   FOR UPDATE USING (is_admin());
 
--- ── 6. handle_new_user trigger (updated) ─────────────────────
+-- ── 5. handle_new_user trigger (updated) ─────────────────────
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger AS $$
 DECLARE
@@ -108,7 +105,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- ── 7. Update profiles RLS policies ──────────────────────────
+-- ── 6. Update profiles RLS policies ──────────────────────────
 DROP POLICY IF EXISTS "profiles_select" ON public.profiles;
 CREATE POLICY "profiles_select" ON public.profiles
   FOR SELECT USING (
@@ -126,7 +123,7 @@ DROP POLICY IF EXISTS "profiles_delete" ON public.profiles;
 CREATE POLICY "profiles_delete" ON public.profiles
   FOR DELETE USING (is_admin());
 
--- ── 8. Public RPC to validate an invite token ─────────────────
+-- ── 7. Public RPC to validate an invite token ─────────────────
 -- Accessible without authentication (SECURITY DEFINER bypasses RLS)
 CREATE OR REPLACE FUNCTION public.get_invitation_by_token(p_token text)
 RETURNS TABLE(
@@ -146,19 +143,19 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.get_invitation_by_token TO anon, authenticated;
 
--- ── 9. Indexes ────────────────────────────────────────────────
+-- ── 8. Indexes ────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS invitations_email_status_idx
   ON public.invitations(email, status);
 
 CREATE INDEX IF NOT EXISTS profiles_role_is_active_idx
   ON public.profiles(role, is_active);
 
--- ── 10. Ensure admin profile is active ───────────────────────
+-- ── 9. Ensure admin profile is active ───────────────────────
 UPDATE public.profiles
 SET role = 'admin', is_active = true
 WHERE email = 'rkim@limex.com';
 
--- ── 11. Confirmation ──────────────────────────────────────────
+-- ── 10. Confirmation ──────────────────────────────────────────
 SELECT
   role,
   COUNT(*) AS count,
