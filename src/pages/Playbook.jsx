@@ -1,3 +1,16 @@
+/**
+ * PLAYBOOK PAGE — src/pages/Playbook.jsx
+ *
+ * This page is a living document. Update it whenever:
+ * - Deal or lead stages change
+ * - New objects or relationships are added
+ * - Process/workflow requirements change
+ * - New required fields are added to any stage
+ *
+ * See docs/PLAYBOOK_SYNC.md for the full update checklist.
+ *
+ * Last updated: 2026-06-12
+ */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';

@@ -54,6 +54,10 @@ npm run dev
 
 Requires `.env` with `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, and `VITE_SUPERUSER_EMAIL`.
 
+## Keeping the Playbook in sync
+See docs/PLAYBOOK_SYNC.md for a checklist of when and how to
+update the Playbook page when CRM configuration changes.
+
 ## Database Migrations
 
 Migrations are in `supabase/migrations/`. Run them in order against your Supabase project via the SQL editor or Supabase CLI.
