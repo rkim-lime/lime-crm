@@ -29,6 +29,7 @@ export function useDeals(filters = {}) {
       if (filters.motion)  q = q.eq('motion', filters.motion);
       if (filters.account) q = q.eq('account_id', filters.account);
       if (filters.search)  q = q.ilike('name', `%${filters.search}%`);
+      if (filters.owner)   q = q.eq('owner_id', filters.owner);
       const { data, error } = await q;
       if (error) throw error;
       return data.map(row => ({ ...row, order_routing: normalizeRouting(row.order_routing) }));
@@ -122,6 +123,32 @@ export function useDeleteDeal() {
       qc.invalidateQueries({ queryKey: ['deals'] });
       qc.removeQueries({ queryKey: ['deal', id] });
     },
+  });
+}
+
+export function useDealMetrics(tier, ownerFilter = null) {
+  const B2B_CLOSED = ['live', 'lost'];
+  const B2B_EXCLUDE_PROGRESS = ['prospecting', 'live', 'lost'];
+  return useQuery({
+    queryKey: ['deal-metrics', tier, ownerFilter],
+    queryFn: async () => {
+      let q = supabase.from('deals').select('id,stage,estimated_commission,probability').eq('tier', tier);
+      if (ownerFilter) q = q.eq('owner_id', ownerFilter);
+      const { data, error } = await q;
+      if (error) throw error;
+      const rows = data ?? [];
+      const openRows = rows.filter(d => !B2B_CLOSED.includes(d.stage));
+      const inProgressRows = rows.filter(d => !B2B_EXCLUDE_PROGRESS.includes(d.stage));
+      const totalCommission = openRows.reduce((s, d) => s + (d.estimated_commission ?? 0), 0);
+      const dealCount = inProgressRows.length;
+      const avgProbability = openRows.length
+        ? Math.round(openRows.reduce((s, d) => s + (d.probability ?? 0), 0) / openRows.length)
+        : 0;
+      const stageBreakdown = {};
+      rows.forEach(d => { stageBreakdown[d.stage] = (stageBreakdown[d.stage] ?? 0) + 1; });
+      return { totalCommission, dealCount, avgProbability, stageBreakdown };
+    },
+    enabled: !!tier,
   });
 }
 

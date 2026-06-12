@@ -28,6 +28,7 @@ export function useAccounts(filters = {}) {
       if (filters.status)  q = q.eq('status', filters.status);
       if (filters.segment) q = q.eq('segment', filters.segment);
       if (filters.search)  q = q.ilike('name', `%${filters.search}%`);
+      if (filters.owner)   q = q.eq('owner_id', filters.owner);
       const { data, error } = await q;
       if (error) throw error;
       return data.map(row => ({ ...row, order_routing: normalizeRouting(row.order_routing) }));

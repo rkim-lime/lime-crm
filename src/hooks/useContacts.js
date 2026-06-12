@@ -136,6 +136,24 @@ export function useArchiveContact() {
   });
 }
 
+export function useContactMetrics(tier) {
+  return useQuery({
+    queryKey: ['contact-metrics', tier],
+    queryFn: async () => {
+      let q = supabase.from('contacts').select('id,lead_score,status');
+      if (tier) q = q.eq('tier', tier);
+      const { data, error } = await q;
+      if (error) throw error;
+      const rows = data ?? [];
+      const scored = rows.filter(c => c.lead_score != null);
+      const avgLeadScore = scored.length
+        ? Math.round(scored.reduce((s, c) => s + c.lead_score, 0) / scored.length)
+        : 0;
+      return { totalCount: rows.length, avgLeadScore };
+    },
+  });
+}
+
 export function useUnlinkContactFromAccount() {
   const qc = useQueryClient();
   return useMutation({

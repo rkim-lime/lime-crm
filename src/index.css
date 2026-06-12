@@ -444,6 +444,13 @@ tr:hover td { background: var(--bg-secondary); cursor: pointer; }
 .badge-onboarding               { background: var(--seg-hedge-bg);color: var(--seg-hedge);border-color: var(--seg-hedge);     }
 .badge-closed_won               { background: var(--green-bg);    color: var(--green);    border-color: var(--green-border);  }
 .badge-closed_lost              { background: var(--red-bg);      color: var(--red);      border-color: var(--red-border);    }
+/* Deal stage — renamed values after migration 002 */
+.badge-proposal         { background: var(--seg-algo-bg); color: var(--seg-algo); border-color: var(--seg-algo);       }
+.badge-legal_compliance { background: var(--yellow-bg);   color: var(--yellow);   border-color: var(--yellow-border);  }
+.badge-live             { background: var(--green-bg);    color: var(--green);    border-color: var(--green-border);   }
+.badge-lost             { background: var(--red-bg);      color: var(--red);      border-color: var(--red-border);     }
+.badge-unsubscribed     { background: var(--bg-tertiary); color: var(--text-tertiary); border-color: var(--border);    }
+
 /* Deal stage — individual lifecycle */
 .badge-lead_in       { background: var(--bg-tertiary);   color: var(--text-secondary); border-color: var(--border);         }
 .badge-engaged       { background: var(--blue-bg);       color: var(--blue);           border-color: var(--blue-border);    }
