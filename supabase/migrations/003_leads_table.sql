@@ -165,8 +165,7 @@ END $$;
 
 -- Archive migrated individual deals (keep for audit)
 UPDATE public.deals
-SET   status = 'inactive',
-      notes  = COALESCE(notes, '') || ' [Migrated to leads table]'
+SET   notes = COALESCE(notes, '') || ' [Migrated to leads table]'
 WHERE motion = 'individual';
 
 -- ── 9. Seed test leads ───────────────────────────────────────
