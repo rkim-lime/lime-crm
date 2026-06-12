@@ -10,7 +10,8 @@ const FIELDS = `
   first_funded_at, first_trade_at, activated_at, churned_at,
   churn_reason, converted_at, converted_to_deal_id, converted_to_tier,
   conversion_notes, notes, tags, created_at, updated_at,
-  contact:contacts(id, first_name, last_name, email, phone, tier, segment)
+  contact:contact_id(id, first_name, last_name, email, phone, tier, segment),
+  referrer:referrer_contact_id(id, first_name, last_name, email)
 `;
 
 async function logActivity(payload) {

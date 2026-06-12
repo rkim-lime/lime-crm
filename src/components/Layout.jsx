@@ -11,18 +11,17 @@ const NAV_SECTIONS = [
   {
     label: 'Pipelines',
     items: [
-      { to: '/pipeline/enterprise', label: 'Enterprise',  icon: '⬡' },
-      { to: '/pipeline/pro',        label: 'Pro',          icon: '⬡' },
-      { to: '/pipeline/individual', label: 'Individual',   icon: '⬡' },
-      { to: '/leads',               label: 'Leads',        icon: '◈' },
+      { to: '/pipeline/enterprise', label: 'Enterprise', icon: '⬡' },
+      { to: '/pipeline/pro',        label: 'Pro',         icon: '⬡' },
+      { to: '/pipeline/individual', label: 'Individual',  icon: '⬡' },
     ],
   },
   {
-    label: 'Accounts & Contacts',
+    label: 'Leads & Contacts',
     items: [
-      { to: '/accounts', label: 'Accounts', icon: '🏢', hideIcon: true },
-      { to: '/contacts', label: 'Contacts', icon: '👤', hideIcon: true },
-      { to: '/deals',    label: 'Deals',    icon: '◎' },
+      { to: '/leads',    label: 'Leads',    icon: '◈' },
+      { to: '/accounts', label: 'Accounts', icon: '⬜' },
+      { to: '/contacts', label: 'Contacts', icon: '◯' },
     ],
   },
   {
@@ -30,13 +29,12 @@ const NAV_SECTIONS = [
     items: [
       { to: '/tasks',     label: 'Tasks',         icon: '✓' },
       { to: '/activity',  label: 'Activity Feed', icon: '⚡' },
-      { to: '/documents', label: 'Documents',     icon: '📄', hideIcon: true },
+      { to: '/documents', label: 'Documents',     icon: '◻' },
     ],
   },
   {
     label: 'Reports',
     items: [
-      { to: '/funnel',               label: 'Funnels',      icon: '⬇' },
       { to: '/analytics',            label: 'Analytics',    icon: '▲' },
       { to: '/reports',              label: 'Reports',      icon: '☰' },
       { to: '/reports/lead-hygiene', label: 'Lead Hygiene', icon: '◍' },
