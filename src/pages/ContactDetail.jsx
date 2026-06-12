@@ -41,9 +41,7 @@ export default function ContactDetail() {
   const name = `${c.first_name} ${c.last_name}`;
   const hasActiveLead = leads.data?.some(
     l => l.status === 'converted' ||
-         l.stage === 'active' ||
-         l.stage === 'first_trade' ||
-         l.stage === 'funded'
+         ['activated', 'funded', 'first_trade', 'active'].includes(l.stage)
   ) ?? false;
 
   const handleConfirm = async () => {
