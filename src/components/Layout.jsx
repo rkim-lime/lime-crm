@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
+import { usePendingUsers } from '../hooks/usePendingUsers';
 
-const NAV_SECTIONS = [
+const STATIC_NAV_SECTIONS = [
   {
     label: 'Workspace',
     items: [
@@ -42,14 +44,16 @@ const NAV_SECTIONS = [
       { to: '/reports/lead-hygiene', label: 'Lead Hygiene', icon: '◍' },
     ],
   },
-  {
-    label: 'Settings',
-    items: [
-      { to: '/integrations',    label: 'Integrations',   icon: '⟳' },
-      { to: '/settings',        label: 'Settings',       icon: '⚙' },
-      { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
-    ],
-  },
+];
+
+const BASE_SETTINGS_ITEMS = [
+  { to: '/integrations',     label: 'Integrations',   icon: '⟳' },
+  { to: '/settings',         label: 'Settings',       icon: '⚙' },
+  { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
+];
+
+const ADMIN_SETTINGS_ITEMS = [
+  { to: '/settings/users',   label: 'Users',          icon: '◉' },
 ];
 
 function Icon({ ch }) {
@@ -64,6 +68,22 @@ function initials(name) {
 export default function Layout({ title, children }) {
   const { profile, role, signOut } = useAuth();
   const navigate = useNavigate();
+  const { count: pendingCount } = usePendingUsers();
+  const isAdmin = role === 'admin';
+
+  const [dismissedCount, setDismissedCount] = useState(
+    () => parseInt(localStorage.getItem('lime_pending_dismissed') ?? '0', 10)
+  );
+
+  const showBanner   = isAdmin && pendingCount > 0 && pendingCount > dismissedCount;
+  const settingsItems = isAdmin
+    ? [...BASE_SETTINGS_ITEMS, ...ADMIN_SETTINGS_ITEMS]
+    : BASE_SETTINGS_ITEMS;
+
+  const handleDismissBanner = () => {
+    localStorage.setItem('lime_pending_dismissed', String(pendingCount));
+    setDismissedCount(pendingCount);
+  };
 
   const handleSignOut = async () => {
     await signOut();
@@ -79,7 +99,8 @@ export default function Layout({ title, children }) {
         </div>
 
         <nav className="sidebar-nav">
-          {NAV_SECTIONS.map(section => (
+          {/* Static sections */}
+          {STATIC_NAV_SECTIONS.map(section => (
             <div key={section.label}>
               <div className="sidebar-section-label">{section.label}</div>
               {section.items.map(({ to, label, icon }) => (
@@ -94,6 +115,41 @@ export default function Layout({ title, children }) {
               ))}
             </div>
           ))}
+
+          {/* Settings section (dynamic) */}
+          <div>
+            <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Settings
+              {isAdmin && pendingCount > 0 && (
+                <span style={{
+                  background: 'var(--red)', color: '#fff',
+                  borderRadius: 10, fontSize: 10, fontWeight: 700,
+                  padding: '1px 5px', lineHeight: '14px',
+                }}>
+                  {pendingCount}
+                </span>
+              )}
+            </div>
+            {settingsItems.map(({ to, label, icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
+              >
+                <Icon ch={icon} />
+                {label}
+                {label === 'Users' && isAdmin && pendingCount > 0 && (
+                  <span style={{
+                    marginLeft: 'auto', background: 'var(--red)', color: '#fff',
+                    borderRadius: 10, fontSize: 10, fontWeight: 700,
+                    padding: '0px 5px', lineHeight: '16px',
+                  }}>
+                    {pendingCount}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+          </div>
         </nav>
 
         <div className="sidebar-bottom">
@@ -114,7 +170,37 @@ export default function Layout({ title, children }) {
         <header className="topbar">
           <span className="topbar-title">{title}</span>
         </header>
-        <main className="page-body">{children}</main>
+        <main className="page-body">
+          {/* Pending users banner */}
+          {showBanner && (
+            <div
+              onClick={() => navigate('/settings/users')}
+              style={{
+                background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6,
+                padding: '10px 16px', marginBottom: 20, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 10,
+              }}
+            >
+              <span style={{ fontSize: 14 }}>⚠</span>
+              <span style={{ flex: 1, fontSize: 13, color: '#92400e' }}>
+                <strong>{pendingCount} user{pendingCount > 1 ? 's' : ''} pending approval</strong>
+                {' — Review in '}
+                <u>Settings → Users</u>
+              </span>
+              <button
+                onClick={e => { e.stopPropagation(); handleDismissBanner(); }}
+                style={{
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  fontSize: 13, color: '#b45309', padding: '0 2px', lineHeight: 1,
+                }}
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          {children}
+        </main>
       </div>
     </div>
   );

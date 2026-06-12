@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './hooks/useAuth.jsx';
 import ProtectedRoute from './components/ProtectedRoute';
+import RoleGate      from './components/RoleGate';
 
 import Login         from './pages/Login';
 import Dashboard     from './pages/Dashboard';
@@ -23,7 +24,8 @@ import Settings      from './pages/Settings';
 import Integrations  from './pages/Integrations';
 import LeadHygiene   from './pages/reports/LeadHygiene';
 import ScoringConfig from './pages/settings/ScoringConfig';
-import RoleGate      from './components/RoleGate';
+import Users         from './pages/settings/Users';
+import AcceptInvite  from './pages/AcceptInvite';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,9 +42,12 @@ export default function App() {
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* Public routes */}
+            <Route path="/login"          element={<Login />} />
+            <Route path="/accept-invite"  element={<AcceptInvite />} />
+            <Route path="/"               element={<Navigate to="/dashboard" replace />} />
 
+            {/* Protected routes */}
             <Route path="/dashboard"        element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/pipeline"         element={<Navigate to="/pipeline/enterprise" replace />} />
             <Route path="/pipeline/:tier"   element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
@@ -61,9 +66,28 @@ export default function App() {
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />
             <Route path="/analytics"        element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/reports"          element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/settings"          element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-            <Route path="/settings/scoring" element={<ProtectedRoute><RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}><ScoringConfig /></RoleGate></ProtectedRoute>} />
+            <Route path="/settings"         element={<ProtectedRoute><Settings /></ProtectedRoute>} />
             <Route path="/integrations"     element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
+
+            {/* Admin-only settings */}
+            <Route path="/settings/scoring"
+              element={
+                <ProtectedRoute>
+                  <RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}>
+                    <ScoringConfig />
+                  </RoleGate>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/settings/users"
+              element={
+                <ProtectedRoute>
+                  <RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}>
+                    <Users />
+                  </RoleGate>
+                </ProtectedRoute>
+              }
+            />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

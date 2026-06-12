@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 
 export default function Login() {
   const { session, signInWithGoogle, signInWithMicrosoft } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const reason = params.get('reason');
 
   useEffect(() => {
     if (session) navigate('/dashboard', { replace: true });
@@ -19,6 +21,17 @@ export default function Login() {
         </div>
 
         <p className="login-subtitle">Lime Trading CRM</p>
+
+        {/* Deactivated account message */}
+        {reason === 'deactivated' && (
+          <div style={{
+            background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 6,
+            padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#dc2626',
+            lineHeight: 1.5,
+          }}>
+            Your account has been deactivated. Please contact your administrator.
+          </div>
+        )}
 
         <button className="oauth-btn" onClick={signInWithGoogle}>
           <GoogleIcon />
