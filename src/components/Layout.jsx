@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { usePendingUsers } from '../hooks/usePendingUsers';
 
@@ -65,9 +65,14 @@ function initials(name) {
   return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 }
 
+function navActive(to, pathname) {
+  return pathname === to || pathname.startsWith(to + '/');
+}
+
 export default function Layout({ title, children }) {
   const { profile, role, signOut } = useAuth();
-  const navigate = useNavigate();
+  const navigate  = useNavigate();
+  const { pathname } = useLocation();
   const { count: pendingCount } = usePendingUsers();
   const isAdmin = role === 'admin';
 
@@ -107,7 +112,7 @@ export default function Layout({ title, children }) {
                 <NavLink
                   key={to}
                   to={to}
-                  className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
+                  className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
                 >
                   <Icon ch={icon} />
                   {label}
@@ -134,7 +139,7 @@ export default function Layout({ title, children }) {
               <NavLink
                 key={to}
                 to={to}
-                className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
+                className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
               >
                 <Icon ch={icon} />
                 {label}

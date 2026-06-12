@@ -21,7 +21,6 @@ import Activity      from './pages/Activity';
 import Documents     from './pages/Documents';
 import Analytics     from './pages/Analytics';
 import Reports       from './pages/Reports';
-import Settings      from './pages/Settings';
 import Integrations  from './pages/Integrations';
 import LeadHygiene   from './pages/reports/LeadHygiene';
 import ScoringConfig from './pages/settings/ScoringConfig';
@@ -67,7 +66,7 @@ export default function App() {
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />
             <Route path="/analytics"        element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/reports"          element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/settings"         element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings"         element={<Navigate to="/settings/users" replace />} />
             <Route path="/integrations"     element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
 
             {/* Admin-only settings */}
