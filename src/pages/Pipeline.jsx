@@ -7,7 +7,7 @@ import LeadForm from '../components/LeadForm';
 import ConvertLeadModal from '../components/ConvertLeadModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
-import { useDeals, useUpdateDeal, usePromoteDeal, useCloseDeal, useDeleteDeal } from '../hooks/useDeals';
+import { useDealsWithScores, useUpdateDeal, usePromoteDeal, useCloseDeal, useDeleteDeal } from '../hooks/useDeals';
 import { useLeads, useUpdateLead, useDeleteLead } from '../hooks/useLeads';
 import { TierBadge, SegmentBadge, AssetPills, fmtCurrency, ErrorBanner } from './shared';
 
@@ -53,7 +53,7 @@ export default function Pipeline() {
   const isAdmin = useIsAdmin();
 
   // ── Data: individual uses leads, B2B uses deals ─────────────
-  const dealsQuery = useDeals(
+  const dealsQuery = useDealsWithScores(
     !isIndividual ? { motion: tier } : { motion: 'individual', status: 'never-match' }
   );
   const leadsQuery = useLeads(
@@ -355,14 +355,14 @@ function KanbanCard({ item, isIndividual, isAdmin, onEdit, onConvert, onPromote,
             {item.lead_score}
           </span>
         )}
-        {!isIndividual && item.deal_score != null && (
+        {!isIndividual && item.score_computed != null && (
           <span style={{
             fontSize: 11.5, fontWeight: 700, borderRadius: 99, padding: '1px 7px',
             background: 'var(--bg-tertiary)', color:
-              item.deal_score >= 75 ? 'var(--green)' :
-              item.deal_score >= 50 ? 'var(--yellow)' : 'var(--text-tertiary)',
+              item.score_computed >= 75 ? 'var(--green)' :
+              item.score_computed >= 50 ? 'var(--yellow)' : 'var(--text-tertiary)',
           }}>
-            {item.deal_score}
+            {item.score_computed}
           </span>
         )}
       </div>

@@ -10,7 +10,11 @@ import { useContacts } from '../../hooks/useContacts';
 import { useDeals } from '../../hooks/useDeals';
 import { fmtRelTime, ErrorBanner } from '../shared';
 
-const SCORE_TYPES = ['deal', 'account_health', 'lead', 'contact_health'];
+const TAB_GROUPS = [
+  { label: 'Enterprise & Pro', types: ['deal', 'account_health'] },
+  { label: 'Individual',       types: ['lead', 'contact_health'] },
+];
+const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types);
 const SCORE_LABELS = {
   deal:           'Deal Score',
   account_health: 'Account Health',
@@ -384,20 +388,36 @@ export default function ScoringConfig() {
       {config.error    && <ErrorBanner message={config.error.message} onRetry={config.refetch} />}
       {saveConfig.error && <ErrorBanner message={saveConfig.error.message} />}
 
-      {/* Score type tabs */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginBottom: 20 }}>
-        {SCORE_TYPES.map(st => (
-          <button
-            key={st}
-            onClick={() => setActiveTab(st)}
-            style={{
-              padding: '8px 20px 10px', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 13.5, fontWeight: activeTab === st ? 600 : 450,
-              color: activeTab === st ? 'var(--accent)' : 'var(--text-secondary)',
-              borderBottom: `2px solid ${activeTab === st ? 'var(--accent)' : 'transparent'}`,
-            }}
-          >{SCORE_LABELS[st]}</button>
-        ))}
+      {/* Score type tabs — grouped */}
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', borderBottom: '1px solid var(--border-subtle)' }}>
+          {TAB_GROUPS.map((group, gi) => (
+            <div key={group.label} style={{ display: 'flex', alignItems: 'flex-end' }}>
+              {gi > 0 && (
+                <div style={{ width: 1, height: 28, background: 'var(--border)', margin: '0 4px 0', alignSelf: 'center' }} />
+              )}
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-tertiary)', letterSpacing: .8, textTransform: 'uppercase', padding: '0 20px 4px', userSelect: 'none' }}>
+                  {group.label}
+                </div>
+                <div style={{ display: 'flex' }}>
+                  {group.types.map(st => (
+                    <button
+                      key={st}
+                      onClick={() => setActiveTab(st)}
+                      style={{
+                        padding: '6px 20px 10px', background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: 13.5, fontWeight: activeTab === st ? 600 : 450,
+                        color: activeTab === st ? 'var(--accent)' : 'var(--text-secondary)',
+                        borderBottom: `2px solid ${activeTab === st ? 'var(--accent)' : 'transparent'}`,
+                      }}
+                    >{SCORE_LABELS[st]}</button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {config.isLoading ? (

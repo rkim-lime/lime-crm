@@ -6,7 +6,7 @@ import DealForm from '../components/DealForm';
 import ActionMenu from '../components/ActionMenu';
 import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
-import { useDeals, useUpdateDeal, useDeleteDeal } from '../hooks/useDeals';
+import { useDealsWithScores, useUpdateDeal, useDeleteDeal } from '../hooks/useDeals';
 import { TierBadge, StageBadge, AssetPills, fmtCurrency, fmtDate, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const INST_STAGES = [
@@ -42,7 +42,7 @@ export default function Deals() {
   const navigate = useNavigate();
   const isAdmin  = useIsAdmin();
 
-  const { data, isLoading, error, refetch } = useDeals({ search, stage, tier });
+  const { data, isLoading, error, refetch } = useDealsWithScores({ search, stage, tier });
   const update = useUpdateDeal();
   const deleteDeal = useDeleteDeal();
 
@@ -114,9 +114,9 @@ export default function Deals() {
                     </span>
                   </td>
                   <td>
-                    {d.deal_score != null ? (
-                      <span style={{ fontWeight: 600, color: d.deal_score >= 75 ? 'var(--green)' : d.deal_score >= 50 ? 'var(--yellow)' : 'var(--text-secondary)' }}>
-                        {d.deal_score}
+                    {d.score_computed != null ? (
+                      <span style={{ fontWeight: 600, color: d.score_computed >= 75 ? 'var(--green)' : d.score_computed >= 50 ? 'var(--yellow)' : 'var(--text-secondary)' }}>
+                        {d.score_computed}
                       </span>
                     ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                   </td>

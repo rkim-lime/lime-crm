@@ -44,25 +44,26 @@ export default function AccountDetail() {
   const tasks      = useTasks({ account: id });
   const activities = useActivities({ account: id });
 
-  if (account.isLoading) return <Layout title="Account"><div style={{ padding: 24 }}><div className="skeleton skeleton-text" style={{ width: 200, height: 24 }} /></div></Layout>;
-  if (account.error) return <Layout title="Account"><div style={{ padding: 24 }}><ErrorBanner message={account.error.message} onRetry={account.refetch} /></div></Layout>;
-
-  const a = account.data;
-
-  const now = new Date();
+  // All hooks must be called before any conditional return
   const hasOverdueTasks = useMemo(() =>
-    tasks.data?.some(t => t.status !== 'completed' && t.due_date && new Date(t.due_date) < now)
-    ?? false,
+    (tasks.data ?? []).some(
+      t => t.status !== 'completed' && t.due_date && new Date(t.due_date) < new Date()
+    ),
   [tasks.data]);
   const daysSinceActivity = useMemo(() => {
-    const latest = activities.data?.[0];
+    const latest = (activities.data ?? [])[0];
     if (!latest) return null;
-    return Math.floor((now - new Date(latest.occurred_at)) / 86_400_000);
+    return Math.floor((Date.now() - new Date(latest.occurred_at)) / 86_400_000);
   }, [activities.data]);
   const scoreExtraParams = useMemo(
     () => ({ hasOverdueTasks, daysSinceActivity }),
     [hasOverdueTasks, daysSinceActivity],
   );
+
+  if (account.isLoading) return <Layout title="Account"><div style={{ padding: 24 }}><div className="skeleton skeleton-text" style={{ width: 200, height: 24 }} /></div></Layout>;
+  if (account.error) return <Layout title="Account"><div style={{ padding: 24 }}><ErrorBanner message={account.error.message} onRetry={account.refetch} /></div></Layout>;
+
+  const a = account.data;
 
   const handleConfirm = async () => {
     if (!confirm) return;

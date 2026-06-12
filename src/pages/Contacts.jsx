@@ -112,7 +112,7 @@ export default function Contacts() {
                   <td><TierBadge tier={c.tier} /></td>
                   <td><SegmentBadge segment={c.segment} /></td>
                   <td><StatusBadge status={c.status} /></td>
-                  <td><LeadScore score={c.lead_score} /></td>
+                  <td>{c.tier === 'individual' ? <LeadScore score={c.lead_score} /> : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}</td>
                   <td><AssetPills classes={c.asset_classes} /></td>
                   <td><KycBadge status={c.kyc_status} /></td>
                   <td onClick={e => e.stopPropagation()}>

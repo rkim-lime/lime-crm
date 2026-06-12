@@ -40,7 +40,10 @@ export default function ContactDetail() {
   const c = contact.data;
   const name = `${c.first_name} ${c.last_name}`;
   const hasActiveLead = leads.data?.some(
-    l => l.status === 'active' || l.status === 'converted'
+    l => l.status === 'converted' ||
+         l.stage === 'active' ||
+         l.stage === 'first_trade' ||
+         l.stage === 'funded'
   ) ?? false;
 
   const handleConfirm = async () => {

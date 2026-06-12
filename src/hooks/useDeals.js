@@ -1,5 +1,8 @@
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { useScoringConfig } from './useScoringConfig';
+import { scoreDeal } from '../lib/scoring';
 
 const FIELDS = 'id,name,stage,motion,tier,estimated_adv_usd,estimated_commission,close_date,probability,asset_classes,order_routing,colo,market_data,hosting,cross_connect,notes,lost_reason,competitor,owner_id,created_at,account_id,contact_id,deal_score,account:accounts(id,name,segment,tier,aum_usd,kyc_status,avg_daily_volume_usd,asset_classes,status),contact:contacts(id,first_name,last_name,email,title,tier)';
 
@@ -51,6 +54,22 @@ export function useDeal(id) {
     },
     enabled: !!id,
   });
+}
+
+export function useDealsWithScores(filters = {}) {
+  const deals  = useDeals(filters);
+  const config = useScoringConfig();
+
+  const data = useMemo(() => {
+    if (!deals.data) return deals.data;
+    const weights = config.data?.weightsOnly?.deal ?? {};
+    return deals.data.map(deal => ({
+      ...deal,
+      score_computed: scoreDeal(deal, weights).score,
+    }));
+  }, [deals.data, config.data]);
+
+  return { ...deals, data };
 }
 
 export function useCreateDeal() {
