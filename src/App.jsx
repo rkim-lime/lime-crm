@@ -66,14 +66,13 @@ export default function App() {
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />
             <Route path="/analytics"        element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/reports"          element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/settings"         element={<Navigate to="/settings/users" replace />} />
             <Route path="/integrations"     element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
 
-            {/* Admin-only settings */}
+            {/* Settings — specific routes must come before the redirect */}
             <Route path="/settings/scoring"
               element={
                 <ProtectedRoute>
-                  <RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}>
+                  <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
                     <ScoringConfig />
                   </RoleGate>
                 </ProtectedRoute>
@@ -82,12 +81,13 @@ export default function App() {
             <Route path="/settings/users"
               element={
                 <ProtectedRoute>
-                  <RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}>
+                  <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
                     <Users />
                   </RoleGate>
                 </ProtectedRoute>
               }
             />
+            <Route path="/settings" element={<Navigate to="/settings/users" replace />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Routes>

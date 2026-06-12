@@ -16,15 +16,15 @@ const STATIC_NAV_SECTIONS = [
       { to: '/pipeline/enterprise', label: 'Enterprise', icon: '⬡' },
       { to: '/pipeline/pro',        label: 'Pro',         icon: '⬡' },
       { to: '/pipeline/individual', label: 'Individual',  icon: '⬡' },
-      { to: '/deals',               label: 'Deals',       icon: '◎' },
+      { to: '/deals',               label: 'Deals',       icon: '◎', prefix: true },
     ],
   },
   {
     label: 'Leads & Contacts',
     items: [
-      { to: '/leads',    label: 'Leads',    icon: '◈' },
-      { to: '/accounts', label: 'Accounts', icon: '⬜' },
-      { to: '/contacts', label: 'Contacts', icon: '◯' },
+      { to: '/leads',    label: 'Leads',    icon: '◈', prefix: true },
+      { to: '/accounts', label: 'Accounts', icon: '⬜', prefix: true },
+      { to: '/contacts', label: 'Contacts', icon: '◯', prefix: true },
     ],
   },
   {
@@ -48,7 +48,6 @@ const STATIC_NAV_SECTIONS = [
 
 const BASE_SETTINGS_ITEMS = [
   { to: '/integrations',     label: 'Integrations',   icon: '⟳' },
-  { to: '/settings',         label: 'Settings',       icon: '⚙' },
   { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
 ];
 
@@ -65,8 +64,9 @@ function initials(name) {
   return name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
 }
 
-function navActive(to, pathname) {
-  return pathname === to || pathname.startsWith(to + '/');
+function navActive(to, pathname, prefix = false) {
+  if (pathname === to) return true;
+  return prefix && pathname.startsWith(to + '/');
 }
 
 export default function Layout({ title, children }) {
@@ -108,11 +108,11 @@ export default function Layout({ title, children }) {
           {STATIC_NAV_SECTIONS.map(section => (
             <div key={section.label}>
               <div className="sidebar-section-label">{section.label}</div>
-              {section.items.map(({ to, label, icon }) => (
+              {section.items.map(({ to, label, icon, prefix }) => (
                 <NavLink
                   key={to}
                   to={to}
-                  className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
+                  className={`sidebar-item${navActive(to, pathname, prefix) ? ' active' : ''}`}
                 >
                   <Icon ch={icon} />
                   {label}
