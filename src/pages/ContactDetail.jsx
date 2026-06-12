@@ -11,6 +11,7 @@ import LogActivityModal from '../components/LogActivityModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useContact, useContactAccounts, useUnlinkContactFromAccount, useDeleteContact, useArchiveContact } from '../hooks/useContacts';
 import { useActivities } from '../hooks/useActivities';
+import { useLeads } from '../hooks/useLeads';
 import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, LeadScore, ActivityIcon, fmtRelTime, ErrorBanner } from './shared';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
@@ -28,6 +29,7 @@ export default function ContactDetail() {
   const contact    = useContact(id);
   const accounts   = useContactAccounts(id);
   const activities = useActivities({ contact: id });
+  const leads      = useLeads({ contact: id });
   const unlink     = useUnlinkContactFromAccount();
   const deleteContact  = useDeleteContact();
   const archiveContact = useArchiveContact();
@@ -37,6 +39,9 @@ export default function ContactDetail() {
 
   const c = contact.data;
   const name = `${c.first_name} ${c.last_name}`;
+  const hasActiveLead = leads.data?.some(
+    l => l.status === 'active' || l.status === 'converted'
+  ) ?? false;
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -57,7 +62,7 @@ export default function ContactDetail() {
         <TierBadge tier={c.tier} />
         <SegmentBadge segment={c.segment} />
         <StatusBadge status={c.status} />
-        <LeadScore score={c.lead_score} />
+        {c.tier === 'individual' && <LeadScore score={c.lead_score} />}
         <span style={{ flex: 1 }} />
         <button className="btn btn-secondary btn-sm" onClick={() => setActivity(true)}>Log Activity</button>
         <button className="btn btn-secondary btn-sm" onClick={() => setTaskOpen(true)}>New Task</button>
@@ -101,10 +106,10 @@ export default function ContactDetail() {
             <Field label="FINRA CRD"           value={c.finra_crd} mono />
           </div>
 
-          {/* Score card — pro tier only */}
-          {c.tier === 'pro' && (
+          {/* Contact health — individual with active/converted lead only */}
+          {c.tier === 'individual' && hasActiveLead && (
             <>
-              <ScoreCard tier="pro" record={c} title="Contact Score" />
+              <ScoreCard scoreType="contact_health" record={c} />
               <ScoreHistoryMini recordType="contact" recordId={c.id} />
             </>
           )}

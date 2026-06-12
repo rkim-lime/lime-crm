@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
-const FIELDS = 'id,name,stage,motion,tier,estimated_adv_usd,estimated_commission,close_date,probability,asset_classes,order_routing,colo,market_data,hosting,cross_connect,notes,lost_reason,competitor,owner_id,created_at,account_id,contact_id,account:accounts(id,name,segment,tier),contact:contacts(id,first_name,last_name)';
+const FIELDS = 'id,name,stage,motion,tier,estimated_adv_usd,estimated_commission,close_date,probability,asset_classes,order_routing,colo,market_data,hosting,cross_connect,notes,lost_reason,competitor,owner_id,created_at,account_id,contact_id,deal_score,account:accounts(id,name,segment,tier,aum_usd,kyc_status,avg_daily_volume_usd,asset_classes,status),contact:contacts(id,first_name,last_name,email,title,tier)';
 
 const VALID_ROUTING = ['sor', 'dma', 'commission_free'];
 function normalizeRouting(arr) {

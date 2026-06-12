@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { computeScore } from '../lib/scoring';
 
+const SCORE_TYPES = ['lead','deal','contact_health','account_health'];
+
 // ── Config fetch ──────────────────────────────────────────────────────────────
 
 export function useScoringConfig() {
@@ -17,51 +19,57 @@ export function useScoringConfig() {
         .order('sort_order');
       if (error) throw error;
 
-      const grouped = { enterprise: {}, pro: {}, individual: {} };
-      const rows = {};
+      const criteria    = { lead: [], deal: [], contact_health: [], account_health: [] };
+      const weightsOnly = { lead: {}, deal: {}, contact_health: {}, account_health: {} };
+
       for (const row of (data ?? [])) {
-        if (grouped[row.tier]) grouped[row.tier][row.criterion_key] = row.weight;
-        rows[`${row.tier}:${row.criterion_key}`] = row;
+        const st = row.score_type;
+        if (!SCORE_TYPES.includes(st)) continue;
+        criteria[st].push(row);
+        if (row.is_active) weightsOnly[st][row.criterion_key] = row.weight;
       }
-      return { grouped, rows, raw: data ?? [] };
+
+      return { criteria, weightsOnly, raw: data ?? [] };
     },
   });
 }
 
 // ── Computed score for a single record ───────────────────────────────────────
 
-export function useComputedScore(tier, record) {
+export function useComputedScore(scoreType, record, extraParams) {
   const config = useScoringConfig();
 
   return useMemo(() => {
     if (!record || config.isLoading || !config.data) {
-      return { score: 0, breakdown: [], isLoading: config.isLoading };
+      return { score: 0, availableScore: 0, breakdown: [], isLoading: config.isLoading };
     }
-    const weights = config.data.grouped[tier] ?? {};
-    const { score, breakdown } = computeScore(tier, record, weights);
-    return { score, breakdown, isLoading: false };
-  }, [tier, record, config.data, config.isLoading]);
+    const weights = config.data.weightsOnly[scoreType] ?? {};
+    const { score, availableScore, breakdown } = computeScore(scoreType, record, weights, extraParams ?? {});
+    return { score, availableScore, breakdown, isLoading: false };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scoreType, record, config.data, config.isLoading, extraParams]);
 }
 
-// ── Upsert weights for a tier ─────────────────────────────────────────────────
+// ── Upsert weights for a score type ──────────────────────────────────────────
 
 export function useUpdateScoringConfig() {
   const qc = useQueryClient();
   const { session } = useAuth();
 
   return useMutation({
-    mutationFn: async ({ tier, criteria }) => {
+    mutationFn: async ({ scoreType, criteria }) => {
       const userId = session?.user?.id;
       const rows = criteria.map(c => ({
-        tier,
+        score_type:   scoreType,
+        tier:         c.tier ?? 'enterprise',
         criterion_key: c.criterion_key,
-        weight:        c.weight,
-        is_active:     c.is_active ?? true,
-        updated_by:    userId,
+        weight:       c.weight,
+        is_active:    c.is_active ?? true,
+        updated_by:   userId,
       }));
       const { error } = await supabase
         .from('scoring_config')
-        .upsert(rows, { onConflict: 'tier,criterion_key' });
+        .upsert(rows, { onConflict: 'score_type,criterion_key' });
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['scoring-config'] }),
@@ -74,11 +82,11 @@ export function useRecalculateScores() {
   const qc = useQueryClient();
   const [state, setState] = useState({ isRunning: false, progress: 0, total: 0, error: null });
 
-  const run = async ({ tier, mode, weights }) => {
+  const run = async ({ scoreType, mode, weights }) => {
     if (mode === 'new_only') return;
     if (mode === 'scheduled') {
       localStorage.setItem('lime_crm_scheduled_recalc', JSON.stringify({
-        tier, scheduledAt: new Date().toISOString(),
+        scoreType, scheduledAt: new Date().toISOString(),
       }));
       return;
     }
@@ -88,39 +96,68 @@ export function useRecalculateScores() {
       let records = [];
       let table = '';
       let recordType = '';
+      let scoreCol = '';
+      let extraParamsMap = {};
 
-      if (tier === 'individual') {
+      if (scoreType === 'lead') {
         const { data, error } = await supabase.from('leads').select('*');
         if (error) throw error;
-        records = data ?? [];
-        table = 'leads'; recordType = 'lead';
-      } else if (tier === 'enterprise') {
-        const { data, error } = await supabase.from('accounts').select('*').eq('tier', 'enterprise');
+        records = data ?? []; table = 'leads'; recordType = 'lead'; scoreCol = 'lead_score';
+
+      } else if (scoreType === 'deal') {
+        const { data, error } = await supabase
+          .from('deals')
+          .select('*,account:accounts(id,aum_usd,kyc_status,avg_daily_volume_usd,asset_classes,status)');
         if (error) throw error;
-        records = data ?? [];
-        table = 'accounts'; recordType = 'account';
-      } else {
-        const { data, error } = await supabase.from('contacts').select('*').eq('tier', 'pro');
+        records = data ?? []; table = 'deals'; recordType = 'deal'; scoreCol = 'deal_score';
+
+      } else if (scoreType === 'contact_health') {
+        const { data, error } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('tier', 'individual');
         if (error) throw error;
-        records = data ?? [];
-        table = 'contacts'; recordType = 'contact';
+        records = data ?? []; table = 'contacts'; recordType = 'contact'; scoreCol = 'contact_health_score';
+
+      } else if (scoreType === 'account_health') {
+        const [accountsRes, tasksRes, activitiesRes] = await Promise.all([
+          supabase.from('accounts').select('*').eq('tier', 'enterprise'),
+          supabase.from('tasks').select('id,account_id,status,due_date'),
+          supabase.from('activities').select('id,account_id,occurred_at').order('occurred_at', { ascending: false }),
+        ]);
+        if (accountsRes.error) throw accountsRes.error;
+        records = accountsRes.data ?? []; table = 'accounts'; recordType = 'account'; scoreCol = null;
+
+        const now = new Date();
+        for (const acc of records) {
+          const accTasks = (tasksRes.data ?? []).filter(t => t.account_id === acc.id);
+          const accActs  = (activitiesRes.data ?? []).filter(a => a.account_id === acc.id);
+          const hasOverdueTasks = accTasks.some(
+            t => t.status !== 'completed' && t.due_date && new Date(t.due_date) < now
+          );
+          const latestAct = accActs[0];
+          const daysSinceActivity = latestAct
+            ? Math.floor((now - new Date(latestAct.occurred_at)) / 86_400_000)
+            : null;
+          extraParamsMap[acc.id] = { hasOverdueTasks, daysSinceActivity };
+        }
       }
 
       setState(s => ({ ...s, total: records.length }));
       const CHUNK = 50;
-      const weightSnapshot = weights ?? {};
       const historyRows = [];
 
       for (let i = 0; i < records.length; i += CHUNK) {
         const chunk = records.slice(i, i + CHUNK);
         for (const record of chunk) {
-          const { score } = computeScore(tier, record, weightSnapshot);
+          const extraParams = extraParamsMap[record.id] ?? {};
+          const { score } = computeScore(scoreType, record, weights ?? {}, extraParams);
           historyRows.push({
             record_type: recordType, record_id: record.id,
-            score, weights_snapshot: weightSnapshot, triggered_by: 'weight_change',
+            score, weights_snapshot: weights ?? {}, triggered_by: 'weight_change',
           });
-          if (table === 'leads' || table === 'contacts') {
-            await supabase.from(table).update({ lead_score: score }).eq('id', record.id);
+          if (scoreCol) {
+            await supabase.from(table).update({ [scoreCol]: score }).eq('id', record.id);
           }
         }
         setState(s => ({ ...s, progress: Math.min(i + CHUNK, records.length) }));
@@ -133,6 +170,7 @@ export function useRecalculateScores() {
 
       setState(s => ({ ...s, isRunning: false, progress: s.total }));
       qc.invalidateQueries({ queryKey: ['leads'] });
+      qc.invalidateQueries({ queryKey: ['deals'] });
       qc.invalidateQueries({ queryKey: ['contacts'] });
       qc.invalidateQueries({ queryKey: ['score-history'] });
     } catch (err) {

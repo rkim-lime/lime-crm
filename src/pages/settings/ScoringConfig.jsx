@@ -7,37 +7,46 @@ import { computeScore } from '../../lib/scoring';
 import { useLeads } from '../../hooks/useLeads';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useContacts } from '../../hooks/useContacts';
+import { useDeals } from '../../hooks/useDeals';
 import { fmtRelTime, ErrorBanner } from '../shared';
 
-const TIERS = ['enterprise', 'pro', 'individual'];
-const TIER_LABELS = { enterprise: 'Enterprise', pro: 'Pro', individual: 'Individual' };
+const SCORE_TYPES = ['deal', 'account_health', 'lead', 'contact_health'];
+const SCORE_LABELS = {
+  deal:           'Deal Score',
+  account_health: 'Account Health',
+  lead:           'Lead Score',
+  contact_health: 'Contact Health',
+};
 
 // ── Weight total bar ──────────────────────────────────────────────────────────
 
 function WeightTotalBar({ criteria }) {
-  const activeTotal = criteria.filter(c => c.is_active).reduce((s, c) => s + (Number(c.weight) || 0), 0);
-  const isExact  = activeTotal === 100;
-  const isOver   = activeTotal > 100;
-  const barColor = isExact ? 'var(--green)' : 'var(--red)';
-  const pct      = Math.min((activeTotal / 100) * 100, 100);
+  const available   = criteria.filter(c => c.is_active && !c.requires_integration).reduce((s, c) => s + (Number(c.weight) || 0), 0);
+  const integration = criteria.filter(c => c.is_active && c.requires_integration).reduce((s, c) => s + (Number(c.weight) || 0), 0);
+  const activeTotal = available + integration;
+  const isExact     = activeTotal === 100;
+  const barColor    = isExact ? 'var(--green)' : 'var(--red)';
+  const pct         = Math.min((activeTotal / 100) * 100, 100);
 
   return (
     <div style={{ marginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
         <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
           Total weight: <strong style={{ color: isExact ? 'var(--green)' : 'var(--red)' }}>{activeTotal}</strong> / 100
+          {integration > 0 && (
+            <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginLeft: 8 }}>
+              ({available} available + {integration} integration)
+            </span>
+          )}
         </span>
         {!isExact && (
           <span style={{ fontSize: 12, color: 'var(--red)' }}>
-            {isOver ? `${activeTotal - 100} over limit` : `${100 - activeTotal} remaining`}
+            {activeTotal > 100 ? `${activeTotal - 100} over limit` : `${100 - activeTotal} remaining`}
           </span>
         )}
       </div>
       <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%', borderRadius: 3, background: barColor,
-          width: `${pct}%`, transition: 'width .2s, background .2s',
-        }} />
+        <div style={{ height: '100%', borderRadius: 3, background: barColor, width: `${pct}%`, transition: 'width .2s, background .2s' }} />
       </div>
     </div>
   );
@@ -45,14 +54,15 @@ function WeightTotalBar({ criteria }) {
 
 // ── Recalculation modal ───────────────────────────────────────────────────────
 
-function RecalculationModal({ tier, recordCount, weights, onClose }) {
+function RecalculationModal({ scoreType, recordCount, weights, onClose }) {
   const recalc = useRecalculateScores();
   const navigate = useNavigate();
   const [done, setDone] = useState(false);
   const estimate = Math.max(1, Math.round((recordCount * 10) / 1000));
+  const label = SCORE_LABELS[scoreType];
 
   const handleMode = async (mode) => {
-    await recalc.run({ tier, mode, weights });
+    await recalc.run({ scoreType, mode, weights });
     if (mode === 'all') { setDone(true); return; }
     onClose();
   };
@@ -64,7 +74,7 @@ function RecalculationModal({ tier, recordCount, weights, onClose }) {
       <div className="modal-dialog" style={{ width: 580, maxWidth: 'calc(100vw - 32px)' }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <span className="modal-title">
-            {recalc.isRunning ? `Recalculating ${TIER_LABELS[tier]} scores…` : done ? 'Recalculation complete' : 'Weights saved. Apply new scoring?'}
+            {recalc.isRunning ? `Recalculating ${label} scores…` : done ? 'Recalculation complete' : 'Weights saved. Apply new scoring?'}
           </span>
           {!recalc.isRunning && (
             <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
@@ -77,7 +87,6 @@ function RecalculationModal({ tier, recordCount, weights, onClose }) {
             </div>
           )}
 
-          {/* Progress view */}
           {(recalc.isRunning || done) && (
             <div style={{ padding: '8px 0 12px' }}>
               {!done ? (
@@ -106,7 +115,6 @@ function RecalculationModal({ tier, recordCount, weights, onClose }) {
             </div>
           )}
 
-          {/* Three option cards */}
           {!recalc.isRunning && !done && (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
@@ -147,62 +155,60 @@ function RecalculationModal({ tier, recordCount, weights, onClose }) {
 
 function OptionCard({ icon, title, description, sub, primary, onClick }) {
   return (
-    <div style={{
-      border: '1px solid var(--border)', borderRadius: 8, padding: '16px 14px',
-      background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 8,
-    }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '16px 14px', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ fontSize: 22, color: primary ? 'var(--accent)' : 'var(--text-secondary)' }}>{icon}</div>
       <div style={{ fontSize: 13, fontWeight: 600 }}>{title}</div>
       <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5, flex: 1 }}>{description}</div>
       <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginBottom: 8 }}>{sub}</div>
-      <button
-        className={`btn btn-sm ${primary ? 'btn-primary' : 'btn-secondary'}`}
-        onClick={onClick}
-      >{title}</button>
+      <button className={`btn btn-sm ${primary ? 'btn-primary' : 'btn-secondary'}`} onClick={onClick}>{title}</button>
     </div>
   );
 }
 
 // ── Live preview panel ────────────────────────────────────────────────────────
 
-function LivePreview({ tier, localCriteria }) {
+function LivePreview({ scoreType, localCriteria }) {
   const leadsQ    = useLeads({});
+  const dealsQ    = useDeals({});
   const accountsQ = useAccounts({ tier: 'enterprise' });
-  const contactsQ = useContacts({ tier: 'pro' });
+  const contactsQ = useContacts({ tier: 'individual' });
 
   const record = useMemo(() => {
-    if (tier === 'individual') return (leadsQ.data ?? [])[0] ?? null;
-    if (tier === 'enterprise') return (accountsQ.data ?? [])[0] ?? null;
-    return (contactsQ.data ?? [])[0] ?? null;
-  }, [tier, leadsQ.data, accountsQ.data, contactsQ.data]);
+    if (scoreType === 'lead')           return (leadsQ.data ?? [])[0] ?? null;
+    if (scoreType === 'deal')           return (dealsQ.data ?? [])[0] ?? null;
+    if (scoreType === 'account_health') return (accountsQ.data ?? [])[0] ?? null;
+    if (scoreType === 'contact_health') return (contactsQ.data ?? [])[0] ?? null;
+    return null;
+  }, [scoreType, leadsQ.data, dealsQ.data, accountsQ.data, contactsQ.data]);
 
-  const { score, breakdown } = useMemo(() => {
-    if (!record) return { score: 0, breakdown: [] };
+  const { score, availableScore, breakdown } = useMemo(() => {
+    if (!record) return { score: 0, availableScore: 0, breakdown: [] };
     const weights = {};
     localCriteria.forEach(c => { if (c.is_active) weights[c.criterion_key] = Number(c.weight) || 0; });
-    return computeScore(tier, record, weights);
-  }, [tier, record, localCriteria]);
+    return computeScore(scoreType, record, weights);
+  }, [scoreType, record, localCriteria]);
 
   const name = record
     ? (record.name ?? (record.contact ? `${record.contact.first_name} ${record.contact.last_name}` : `${record.first_name} ${record.last_name}`))
     : null;
 
-  const scoreColor = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+  const ratio      = availableScore > 0 ? score / availableScore : 0;
+  const scoreColor = ratio >= 0.75 ? 'var(--green)' : ratio >= 0.5 ? 'var(--yellow)' : 'var(--red)';
 
   return (
     <div className="card" style={{ padding: '16px 20px', marginTop: 20 }}>
       <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 12 }}>Live Preview</div>
       {!record ? (
-        <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>No sample record found for this tier.</div>
+        <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>No sample record found for this score type.</div>
       ) : (
         <>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <div style={{ fontSize: 13.5, fontWeight: 600 }}>{name}</div>
             <div style={{ fontSize: 24, fontWeight: 800, color: scoreColor }}>{score}</div>
-            <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>/ 100</div>
+            <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>/ {availableScore} available</div>
           </div>
           <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden', marginBottom: 14 }}>
-            <div style={{ height: '100%', background: scoreColor, width: `${score}%`, borderRadius: 3, transition: 'width .2s' }} />
+            <div style={{ height: '100%', background: scoreColor, width: `${availableScore > 0 ? (score / availableScore) * 100 : 0}%`, borderRadius: 3, transition: 'width .2s' }} />
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
@@ -216,11 +222,15 @@ function LivePreview({ tier, localCriteria }) {
               {breakdown.map(b => (
                 <tr key={b.criterion_key} style={{ borderBottom: '1px solid var(--border-subtle)', opacity: b.weight === 0 ? .4 : 1 }}>
                   <td style={{ padding: '5px 0', color: 'var(--text-primary)' }}>{b.label}</td>
-                  <td style={{ textAlign: 'center', padding: '5px 8px', color: b.earned ? 'var(--green)' : 'var(--text-tertiary)' }}>
-                    {b.earned ? '✓' : '✗'}
+                  <td style={{ textAlign: 'center', padding: '5px 8px' }}>
+                    {b.requires_integration ? (
+                      <span style={{ color: 'var(--text-tertiary)' }}>⊘</span>
+                    ) : (
+                      <span style={{ color: b.earned ? 'var(--green)' : 'var(--text-tertiary)' }}>{b.earned ? '✓' : '✗'}</span>
+                    )}
                   </td>
                   <td style={{ textAlign: 'right', padding: '5px 0', fontWeight: 600, color: b.points > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
-                    {b.points}
+                    {b.requires_integration ? <span style={{ fontSize: 11 }}>~{b.weight}</span> : b.points}
                   </td>
                 </tr>
               ))}
@@ -236,8 +246,7 @@ function LivePreview({ tier, localCriteria }) {
 
 function CriteriaTable({ criteria, onChange }) {
   const update = (idx, field, value) => {
-    const next = criteria.map((c, i) => i === idx ? { ...c, [field]: value } : c);
-    onChange(next);
+    onChange(criteria.map((c, i) => i === idx ? { ...c, [field]: value } : c));
   };
 
   return (
@@ -248,6 +257,7 @@ function CriteriaTable({ criteria, onChange }) {
             <th style={{ width: 44 }}>Active</th>
             <th>Criterion</th>
             <th>Description</th>
+            <th style={{ width: 110 }}>Integration</th>
             <th style={{ width: 90, textAlign: 'right' }}>Weight</th>
             <th style={{ width: 70, textAlign: 'right' }}>Points</th>
           </tr>
@@ -270,6 +280,15 @@ function CriteriaTable({ criteria, onChange }) {
                 <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', fontFamily: 'var(--mono)' }}>{c.criterion_key}</div>
               </td>
               <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{c.description}</td>
+              <td>
+                {c.requires_integration ? (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                    ⊘ {c.integration_label}
+                  </span>
+                ) : (
+                  <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>—</span>
+                )}
+              </td>
               <td style={{ textAlign: 'right' }}>
                 <input
                   type="number"
@@ -280,8 +299,7 @@ function CriteriaTable({ criteria, onChange }) {
                   style={{
                     width: 60, textAlign: 'right', padding: '4px 6px',
                     border: `1px solid ${Number(c.weight) > 50 ? 'var(--red)' : 'var(--border)'}`,
-                    borderRadius: 4, fontSize: 13, background: 'var(--bg-primary)',
-                    color: 'var(--text-primary)',
+                    borderRadius: 4, fontSize: 13, background: 'var(--bg-primary)', color: 'var(--text-primary)',
                   }}
                 />
               </td>
@@ -299,22 +317,21 @@ function CriteriaTable({ criteria, onChange }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ScoringConfig() {
-  const [activeTab, setActiveTab] = useState('enterprise');
-  const [localCriteria, setLocalCriteria] = useState({}); // { tier: [rows] }
-  const [showModal, setShowModal] = useState(false);
+  const [activeTab, setActiveTab]   = useState('deal');
+  const [localCriteria, setLocalCriteria] = useState({});
+  const [showModal, setShowModal]   = useState(false);
   const [savedWeights, setSavedWeights] = useState({});
 
-  const config    = useScoringConfig();
+  const config     = useScoringConfig();
   const saveConfig = useUpdateScoringConfig();
 
-  // Initialise local state from server data once loaded
   useEffect(() => {
     if (!config.data) return;
     const initial = {};
-    for (const tier of TIERS) {
-      const raw = config.data.raw.filter(r => r.tier === tier);
-      if (raw.length && !localCriteria[tier]) {
-        initial[tier] = raw.map(r => ({ ...r }));
+    for (const st of SCORE_TYPES) {
+      const raw = config.data.raw.filter(r => r.score_type === st);
+      if (raw.length && !localCriteria[st]) {
+        initial[st] = raw.map(r => ({ ...r }));
       }
     }
     if (Object.keys(initial).length) {
@@ -322,31 +339,35 @@ export default function ScoringConfig() {
     }
   }, [config.data]);
 
-  const tierCriteria = localCriteria[activeTab] ?? [];
-  const activeTotal  = tierCriteria.filter(c => c.is_active).reduce((s, c) => s + (Number(c.weight) || 0), 0);
+  const typeCriteria = localCriteria[activeTab] ?? [];
+  const activeTotal  = typeCriteria.filter(c => c.is_active).reduce((s, c) => s + (Number(c.weight) || 0), 0);
   const canSave      = activeTotal === 100;
 
-  // Last-updated metadata from the first row of this tier
-  const lastUpdated = config.data?.raw.find(r => r.tier === activeTab && r.updated_at);
+  const lastUpdated = config.data?.raw.find(r => r.score_type === activeTab && r.updated_at);
 
-  // Record count estimate for the modal
   const leadsQ    = useLeads({});
+  const dealsQ    = useDeals({});
   const accountsQ = useAccounts({ tier: 'enterprise' });
-  const contactsQ = useContacts({ tier: 'pro' });
-  const recordCount = activeTab === 'individual'
-    ? (leadsQ.data?.length ?? 0)
-    : activeTab === 'enterprise'
-    ? (accountsQ.data?.length ?? 0)
-    : (contactsQ.data?.length ?? 0);
+  const contactsQ = useContacts({ tier: 'individual' });
+
+  const recordCount = {
+    lead:           leadsQ.data?.length ?? 0,
+    deal:           dealsQ.data?.length ?? 0,
+    account_health: accountsQ.data?.length ?? 0,
+    contact_health: contactsQ.data?.length ?? 0,
+  }[activeTab] ?? 0;
 
   const handleSave = async () => {
-    const criteria = tierCriteria.map(c => ({
-      criterion_key: c.criterion_key,
-      weight:        Number(c.weight) || 0,
-      is_active:     c.is_active,
+    const criteria = typeCriteria.map(c => ({
+      criterion_key:     c.criterion_key,
+      weight:            Number(c.weight) || 0,
+      is_active:         c.is_active,
+      tier:              c.tier,
+      requires_integration: c.requires_integration,
+      integration_label: c.integration_label,
     }));
     try {
-      await saveConfig.mutateAsync({ tier: activeTab, criteria });
+      await saveConfig.mutateAsync({ scoreType: activeTab, criteria });
       const weights = {};
       criteria.forEach(c => { if (c.is_active) weights[c.criterion_key] = c.weight; });
       setSavedWeights(weights);
@@ -355,27 +376,27 @@ export default function ScoringConfig() {
   };
 
   return (
-    <Layout title="Lead Scoring Configuration">
+    <Layout title="Scoring Configuration">
       <p style={{ fontSize: 13.5, color: 'var(--text-secondary)', marginBottom: 20, maxWidth: 560 }}>
-        Adjust criterion weights for each tier. Weights must sum to 100 before saving.
+        Adjust criterion weights per score type. Active weights must sum to 100 before saving.
       </p>
 
-      {config.error && <ErrorBanner message={config.error.message} onRetry={config.refetch} />}
+      {config.error    && <ErrorBanner message={config.error.message} onRetry={config.refetch} />}
       {saveConfig.error && <ErrorBanner message={saveConfig.error.message} />}
 
-      {/* Tier tabs */}
+      {/* Score type tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', marginBottom: 20 }}>
-        {TIERS.map(t => (
+        {SCORE_TYPES.map(st => (
           <button
-            key={t}
-            onClick={() => setActiveTab(t)}
+            key={st}
+            onClick={() => setActiveTab(st)}
             style={{
               padding: '8px 20px 10px', background: 'none', border: 'none', cursor: 'pointer',
-              fontSize: 13.5, fontWeight: activeTab === t ? 600 : 450,
-              color: activeTab === t ? 'var(--accent)' : 'var(--text-secondary)',
-              borderBottom: `2px solid ${activeTab === t ? 'var(--accent)' : 'transparent'}`,
+              fontSize: 13.5, fontWeight: activeTab === st ? 600 : 450,
+              color: activeTab === st ? 'var(--accent)' : 'var(--text-secondary)',
+              borderBottom: `2px solid ${activeTab === st ? 'var(--accent)' : 'transparent'}`,
             }}
-          >{TIER_LABELS[t]}</button>
+          >{SCORE_LABELS[st]}</button>
         ))}
       </div>
 
@@ -384,17 +405,14 @@ export default function ScoringConfig() {
       ) : (
         <>
           <CriteriaTable
-            criteria={tierCriteria}
+            criteria={typeCriteria}
             onChange={rows => setLocalCriteria(p => ({ ...p, [activeTab]: rows }))}
           />
-          <WeightTotalBar criteria={tierCriteria} />
+          <WeightTotalBar criteria={typeCriteria} />
 
-          {/* Save row */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 }}>
             <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-              {lastUpdated
-                ? `Last updated ${fmtRelTime(lastUpdated.updated_at)}`
-                : 'Not yet saved'}
+              {lastUpdated ? `Last updated ${fmtRelTime(lastUpdated.updated_at)}` : 'Not yet saved'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {!canSave && (
@@ -413,14 +431,13 @@ export default function ScoringConfig() {
             </div>
           </div>
 
-          {/* Live preview */}
-          <LivePreview tier={activeTab} localCriteria={tierCriteria} />
+          <LivePreview scoreType={activeTab} localCriteria={typeCriteria} />
         </>
       )}
 
       {showModal && (
         <RecalculationModal
-          tier={activeTab}
+          scoreType={activeTab}
           recordCount={recordCount}
           weights={savedWeights}
           onClose={() => setShowModal(false)}

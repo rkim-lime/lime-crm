@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
@@ -48,6 +48,21 @@ export default function AccountDetail() {
   if (account.error) return <Layout title="Account"><div style={{ padding: 24 }}><ErrorBanner message={account.error.message} onRetry={account.refetch} /></div></Layout>;
 
   const a = account.data;
+
+  const now = new Date();
+  const hasOverdueTasks = useMemo(() =>
+    tasks.data?.some(t => t.status !== 'completed' && t.due_date && new Date(t.due_date) < now)
+    ?? false,
+  [tasks.data]);
+  const daysSinceActivity = useMemo(() => {
+    const latest = activities.data?.[0];
+    if (!latest) return null;
+    return Math.floor((now - new Date(latest.occurred_at)) / 86_400_000);
+  }, [activities.data]);
+  const scoreExtraParams = useMemo(
+    () => ({ hasOverdueTasks, daysSinceActivity }),
+    [hasOverdueTasks, daysSinceActivity],
+  );
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -129,10 +144,10 @@ export default function AccountDetail() {
               <Field label="FINRA member"        value={a.finra_member ? 'Yes' : 'No'} />
             </div>
 
-            {/* Score card — enterprise only */}
+            {/* Account health score — enterprise only */}
             {a.tier === 'enterprise' && (
               <>
-                <ScoreCard tier="enterprise" record={a} title="Account Score" />
+                <ScoreCard scoreType="account_health" record={a} extraParams={scoreExtraParams} />
                 <ScoreHistoryMini recordType="account" recordId={a.id} />
               </>
             )}

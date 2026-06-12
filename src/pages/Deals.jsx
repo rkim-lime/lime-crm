@@ -89,11 +89,12 @@ export default function Deals() {
                 <th>Est. commission</th>
                 <th>Close date</th>
                 <th>Prob.</th>
+                <th>Score</th>
                 <th style={{ width: 48 }} />
               </tr>
             </thead>
             <tbody>
-              {!data?.length && <tr><td colSpan={8}><EmptyState icon="◎" text="No deals found" /></td></tr>}
+              {!data?.length && <tr><td colSpan={9}><EmptyState icon="◎" text="No deals found" /></td></tr>}
               {data?.map(d => (
                 <tr key={d.id} onClick={() => navigate(`/deals/${d.id}`)}>
                   <td>
@@ -111,6 +112,13 @@ export default function Deals() {
                     <span style={{ fontWeight: 600, color: d.probability >= 70 ? 'var(--green)' : d.probability >= 40 ? 'var(--yellow)' : 'var(--text-secondary)' }}>
                       {d.probability}%
                     </span>
+                  </td>
+                  <td>
+                    {d.deal_score != null ? (
+                      <span style={{ fontWeight: 600, color: d.deal_score >= 75 ? 'var(--green)' : d.deal_score >= 50 ? 'var(--yellow)' : 'var(--text-secondary)' }}>
+                        {d.deal_score}
+                      </span>
+                    ) : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}
                   </td>
                   <td onClick={e => e.stopPropagation()}>
                     <ActionMenu items={[

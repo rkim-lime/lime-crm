@@ -12,6 +12,7 @@ import AccountDetail from './pages/AccountDetail';
 import Contacts      from './pages/Contacts';
 import ContactDetail from './pages/ContactDetail';
 import Deals         from './pages/Deals';
+import DealDetail    from './pages/DealDetail';
 import Leads         from './pages/Leads';
 import LeadDetail    from './pages/LeadDetail';
 import Funnel        from './pages/Funnel';
@@ -56,7 +57,7 @@ export default function App() {
             <Route path="/contacts"         element={<ProtectedRoute><Contacts /></ProtectedRoute>} />
             <Route path="/contacts/:id"     element={<ProtectedRoute><ContactDetail /></ProtectedRoute>} />
             <Route path="/deals"            element={<ProtectedRoute><Deals /></ProtectedRoute>} />
-            <Route path="/deals/:id"        element={<ProtectedRoute><Deals /></ProtectedRoute>} />
+            <Route path="/deals/:id"        element={<ProtectedRoute><DealDetail /></ProtectedRoute>} />
             <Route path="/leads"            element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/leads/:id"        element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
             <Route path="/funnel"           element={<ProtectedRoute><Funnel /></ProtectedRoute>} />

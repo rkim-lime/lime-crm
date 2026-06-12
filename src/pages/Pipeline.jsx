@@ -355,6 +355,16 @@ function KanbanCard({ item, isIndividual, isAdmin, onEdit, onConvert, onPromote,
             {item.lead_score}
           </span>
         )}
+        {!isIndividual && item.deal_score != null && (
+          <span style={{
+            fontSize: 11.5, fontWeight: 700, borderRadius: 99, padding: '1px 7px',
+            background: 'var(--bg-tertiary)', color:
+              item.deal_score >= 75 ? 'var(--green)' :
+              item.deal_score >= 50 ? 'var(--yellow)' : 'var(--text-tertiary)',
+          }}>
+            {item.deal_score}
+          </span>
+        )}
       </div>
       <AssetPills classes={item.asset_classes} />
       {!isIndividual && (

@@ -268,7 +268,7 @@ export default function LeadDetail() {
           )}
 
           {/* Score breakdown */}
-          <ScoreCard tier="individual" record={l} title="Lead Score" />
+          <ScoreCard scoreType="lead" record={l} />
           <ScoreHistoryMini recordType="lead" recordId={l.id} />
 
           {/* Notes */}
