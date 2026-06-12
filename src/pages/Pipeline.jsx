@@ -15,6 +15,20 @@ const INST_STAGES = [
   { key: 'legal_compliance', label: 'Legal & Compliance' },
   { key: 'negotiating',      label: 'Negotiating' },
   { key: 'onboarding',       label: 'Onboarding' },
+  { key: 'live',             label: 'Live' },
+  { key: 'lost',             label: 'Lost' },
+];
+
+const INDIVIDUAL_STAGES = [
+  { key: 'visitor',     label: 'Visitor' },
+  { key: 'lead',        label: 'Lead' },
+  { key: 'nurture',     label: 'Nurture' },
+  { key: 'activated',   label: 'Activated' },
+  { key: 'funded',      label: 'Funded' },
+  { key: 'first_trade', label: 'First Trade' },
+  { key: 'active',      label: 'Active Trader' },
+  { key: 'dormant',     label: 'Dormant' },
+  { key: 'churned',     label: 'Churned' },
 ];
 
 const TIER_LABELS = { enterprise: 'Enterprise', pro: 'Pro', individual: 'Individual' };
@@ -32,22 +46,25 @@ export default function Pipeline() {
   const [dndError, setDndError]           = useState('');
   const isAdmin = useIsAdmin();
 
-  const motion = tier;
-  const { data, isLoading, error, refetch } = useDeals({ motion, tier });
-  const update  = useUpdateDeal();
-  const promote = usePromoteDeal();
-  const close   = useCloseDeal();
+  // Individual pipeline: filter by motion only.
+  // Enterprise / Pro: filter by motion (which matches tier after migration 002 backfill).
+  const { data, isLoading, error, refetch } = useDeals(
+    tier === 'individual' ? { motion: 'individual' } : { motion: tier }
+  );
+  const update     = useUpdateDeal();
+  const promote    = usePromoteDeal();
+  const close      = useCloseDeal();
   const deleteDeal = useDeleteDeal();
 
-  const stages = INST_STAGES;
+  const stages = tier === 'individual' ? INDIVIDUAL_STAGES : INST_STAGES;
 
-  // Apply optimistic stage overrides before filtering
+  // Apply optimistic stage overrides
   const rawDeals = (data ?? []).map(d =>
     pendingStages[d.id] ? { ...d, stage: pendingStages[d.id] } : d
   );
+  // No blanket stage exclusion — all stage columns are explicit in the stage list above.
   const deals = rawDeals.filter(d =>
-    !['live', 'lost', 'active_trader', 'dormant'].includes(d.stage) &&
-    (!search || d.name.toLowerCase().includes(search.toLowerCase()))
+    !search || d.name.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleDrop = (dealId, newStage) => {
@@ -75,8 +92,32 @@ export default function Pipeline() {
     if (action === 'promote')  promote.mutate({ id: deal.id, newTier: targetTier });
     if (action === 'won')      close.mutate({ id: deal.id, outcome: 'live' });
     if (action === 'lost')     close.mutate({ id: deal.id, outcome: 'lost' });
+    if (action === 'activate') update.mutate({ id: deal.id, stage: 'active',   _prevStage: deal.stage });
+    if (action === 'churn')    update.mutate({ id: deal.id, stage: 'churned',  _prevStage: deal.stage });
     setConfirm(null);
   };
+
+  // ConfirmModal copy varies by action
+  const confirmTitle = !confirm ? '' : {
+    promote:  `Promote to ${TIER_LABELS[confirm.targetTier]}?`,
+    won:      'Mark as Closed Won?',
+    lost:     'Mark as Closed Lost?',
+    activate: 'Mark as Active Trader?',
+    churn:    'Mark as Churned?',
+  }[confirm.action] ?? '';
+
+  const confirmMessage = !confirm ? '' : {
+    promote:  `This will move "${confirm.deal.name}" to the ${TIER_LABELS[confirm.targetTier]} pipeline and reset its stage.`,
+    won:      `"${confirm.deal.name}" will be moved to Closed Won.`,
+    lost:     `"${confirm.deal.name}" will be marked as Closed Lost.`,
+    activate: `"${confirm.deal.name}" will be moved to Active Trader.`,
+    churn:    `"${confirm.deal.name}" will be marked as Churned.`,
+  }[confirm.action] ?? '';
+
+  const confirmVariant = confirm?.action === 'lost' || confirm?.action === 'churn' ? 'danger' : 'warning';
+  const confirmLabel   = {
+    lost: 'Close Lost', churn: 'Mark Churned',
+  }[confirm?.action] ?? 'Confirm';
 
   return (
     <Layout title={`${TIER_LABELS[tier] ?? 'Pipeline'} Pipeline`}>
@@ -109,7 +150,7 @@ export default function Pipeline() {
 
       <div className="kanban-board">
         {stages.map(({ key, label }) => {
-          const col = deals.filter(d => d.stage === key);
+          const col    = deals.filter(d => d.stage === key);
           const colVal = col.reduce((s, d) => s + (d.estimated_commission ?? 0), 0);
           return (
             <div
@@ -141,6 +182,8 @@ export default function Pipeline() {
                     onPromote={(targetTier) => setConfirm({ action: 'promote', deal, targetTier })}
                     onWon={() => setConfirm({ action: 'won', deal })}
                     onLost={() => setConfirm({ action: 'lost', deal })}
+                    onActivate={() => setConfirm({ action: 'activate', deal })}
+                    onChurn={() => setConfirm({ action: 'churn', deal })}
                     onDelete={() => setDeleteConfirm({ deal })}
                     onNavigate={() => navigate(`/deals/${deal.id}`)}
                   />
@@ -161,22 +204,10 @@ export default function Pipeline() {
 
       <ConfirmModal
         isOpen={!!confirm}
-        title={
-          !confirm ? '' :
-          confirm.action === 'promote' ? `Promote to ${TIER_LABELS[confirm.targetTier]}?`
-          : confirm.action === 'won'   ? 'Mark as Closed Won?'
-          : 'Mark as Closed Lost?'
-        }
-        message={
-          !confirm ? '' :
-          confirm.action === 'promote'
-            ? `This will move "${confirm.deal.name}" to the ${TIER_LABELS[confirm.targetTier]} pipeline and reset its stage.`
-            : confirm.action === 'won'
-            ? `"${confirm.deal.name}" will be moved to Closed Won.`
-            : `"${confirm.deal.name}" will be marked as Closed Lost.`
-        }
-        confirmLabel={confirm?.action === 'lost' ? 'Close Lost' : 'Confirm'}
-        confirmVariant={confirm?.action === 'lost' ? 'danger' : 'warning'}
+        title={confirmTitle}
+        message={confirmMessage}
+        confirmLabel={confirmLabel}
+        confirmVariant={confirmVariant}
         onConfirm={handleConfirm}
         onCancel={() => setConfirm(null)}
       />
@@ -195,7 +226,7 @@ export default function Pipeline() {
   );
 }
 
-function KanbanCard({ deal, tier, isAdmin, onEdit, onPromote, onWon, onLost, onDelete, onNavigate }) {
+function KanbanCard({ deal, tier, isAdmin, onEdit, onPromote, onWon, onLost, onActivate, onChurn, onDelete, onNavigate }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -206,7 +237,7 @@ function KanbanCard({ deal, tier, isAdmin, onEdit, onPromote, onWon, onLost, onD
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  const promoteTargets = tier === 'pro' ? [{ key: 'enterprise', label: 'Enterprise' }]
+  const promoteTargets = tier === 'pro'        ? [{ key: 'enterprise', label: 'Enterprise' }]
     : tier === 'individual' ? [{ key: 'pro', label: 'Pro' }, { key: 'enterprise', label: 'Enterprise' }]
     : [];
 
@@ -234,10 +265,17 @@ function KanbanCard({ deal, tier, isAdmin, onEdit, onPromote, onWon, onLost, onD
                   <button onClick={() => { onPromote(t.key); setMenuOpen(false); }}>Promote to {t.label}</button>
                 </RoleGate>
               ))}
-              <RoleGate allow={['admin', 'sales']}>
-                <button onClick={() => { onWon(); setMenuOpen(false); }}>Close Won</button>
-                <button style={{ color: 'var(--red)' }} onClick={() => { onLost(); setMenuOpen(false); }}>Close Lost</button>
-              </RoleGate>
+              {tier === 'individual' ? (
+                <RoleGate allow={['admin', 'sales']}>
+                  <button onClick={() => { onActivate(); setMenuOpen(false); }}>Mark Active</button>
+                  <button style={{ color: 'var(--red)' }} onClick={() => { onChurn(); setMenuOpen(false); }}>Mark Churned</button>
+                </RoleGate>
+              ) : (
+                <RoleGate allow={['admin', 'sales']}>
+                  <button onClick={() => { onWon(); setMenuOpen(false); }}>Close Won</button>
+                  <button style={{ color: 'var(--red)' }} onClick={() => { onLost(); setMenuOpen(false); }}>Close Lost</button>
+                </RoleGate>
+              )}
               {isAdmin && (
                 <button style={{ color: 'var(--red)' }} onClick={() => { onDelete(); setMenuOpen(false); }}>Delete</button>
               )}

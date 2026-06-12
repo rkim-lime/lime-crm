@@ -461,6 +461,11 @@ tr:hover td { background: var(--bg-secondary); cursor: pointer; }
 .badge-first_trade   { background: var(--seg-quant-bg);  color: var(--seg-quant);      border-color: var(--seg-quant);      }
 .badge-active_trader { background: var(--green-bg);      color: var(--green);          border-color: var(--green-border);   }
 .badge-dormant       { background: var(--red-bg);        color: var(--red);            border-color: var(--red-border);     }
+/* Deal stage — individual pipeline (new stage names) */
+.badge-visitor   { background: var(--bg-tertiary);   color: var(--text-secondary); border-color: var(--border);         }
+.badge-lead      { background: var(--blue-bg);       color: var(--blue);           border-color: var(--blue-border);    }
+.badge-nurture   { background: var(--seg-algo-bg);   color: var(--seg-algo);       border-color: var(--seg-algo);       }
+.badge-activated { background: var(--seg-hedge-bg);  color: var(--seg-hedge);      border-color: var(--seg-hedge);      }
 
 /* KYC / AML */
 .badge-approved      { background: var(--green-bg);  color: var(--green);  border-color: var(--green-border);  }
