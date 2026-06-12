@@ -26,6 +26,7 @@ import LeadHygiene   from './pages/reports/LeadHygiene';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
 import AcceptInvite  from './pages/AcceptInvite';
+import Playbook      from './pages/Playbook';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +50,7 @@ export default function App() {
 
             {/* Protected routes */}
             <Route path="/dashboard"        element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            <Route path="/playbook"         element={<ProtectedRoute><Playbook /></ProtectedRoute>} />
             <Route path="/pipeline"         element={<Navigate to="/pipeline/enterprise" replace />} />
             <Route path="/pipeline/:tier"   element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
             <Route path="/accounts"         element={<ProtectedRoute><Accounts /></ProtectedRoute>} />

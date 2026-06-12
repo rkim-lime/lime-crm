@@ -8,6 +8,7 @@ const STATIC_NAV_SECTIONS = [
     label: 'Workspace',
     items: [
       { to: '/dashboard', label: 'Dashboard', icon: '▦' },
+      { to: '/playbook',  label: 'Playbook',  icon: '◉' },
     ],
   },
   {

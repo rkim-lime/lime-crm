@@ -1003,6 +1003,19 @@ select.filter-select {
   transition: width .3s ease;
 }
 
+/* ── Playbook animations ─────────────────────────────────────────────────── */
+@keyframes playbook-fadein {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.playbook-anim { animation: playbook-fadein 0.25s ease-out; }
+
+@keyframes playbook-detail-fadein {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.playbook-detail-anim { animation: playbook-detail-fadein 0.18s ease-out; }
+
 /* ── Dark mode overrides ─────────────────────────────────────────────────── */
 @media (prefers-color-scheme: dark) {
   .modal-dialog, .slide-panel { background: var(--bg-primary); }
