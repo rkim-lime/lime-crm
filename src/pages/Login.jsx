@@ -18,7 +18,7 @@ export default function Login() {
           <span className="login-logo-text">lime-crm</span>
         </div>
 
-        <p className="login-subtitle">Institutional trading CRM</p>
+        <p className="login-subtitle">Lime Trading CRM</p>
 
         <button className="oauth-btn" onClick={signInWithGoogle}>
           <GoogleIcon />
