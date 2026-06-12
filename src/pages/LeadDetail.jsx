@@ -11,6 +11,7 @@ import ConvertLeadModal from '../components/ConvertLeadModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useLead, useUpdateLead, useDeleteLead } from '../hooks/useLeads';
 import { useActivities } from '../hooks/useActivities';
+import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 import {
   TierBadge, AssetPills, ActivityIcon,
   fmtDate, fmtRelTime, fmtCurrency, ErrorBanner,
@@ -154,12 +155,6 @@ export default function LeadDetail() {
         )}
       </div>
 
-      {/* Lead score bar */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>Lead Score</div>
-        <ScoreBar score={l.lead_score} />
-      </div>
-
       <div className="detail-grid">
         {/* ── Left column ── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -271,6 +266,10 @@ export default function LeadDetail() {
               )}
             </div>
           )}
+
+          {/* Score breakdown */}
+          <ScoreCard tier="individual" record={l} title="Lead Score" />
+          <ScoreHistoryMini recordType="lead" recordId={l.id} />
 
           {/* Notes */}
           {l.notes && (

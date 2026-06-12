@@ -45,8 +45,9 @@ const NAV_SECTIONS = [
   {
     label: 'Settings',
     items: [
-      { to: '/integrations', label: 'Integrations', icon: '⟳' },
-      { to: '/settings',     label: 'Settings',     icon: '⚙' },
+      { to: '/integrations',    label: 'Integrations',   icon: '⟳' },
+      { to: '/settings',        label: 'Settings',       icon: '⚙' },
+      { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
     ],
   },
 ];

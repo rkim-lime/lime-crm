@@ -22,6 +22,8 @@ import Reports       from './pages/Reports';
 import Settings      from './pages/Settings';
 import Integrations  from './pages/Integrations';
 import LeadHygiene   from './pages/reports/LeadHygiene';
+import ScoringConfig from './pages/settings/ScoringConfig';
+import RoleGate      from './components/RoleGate';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,7 +61,8 @@ export default function App() {
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />
             <Route path="/analytics"        element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
             <Route path="/reports"          element={<ProtectedRoute><Reports /></ProtectedRoute>} />
-            <Route path="/settings"         element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings"          element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+            <Route path="/settings/scoring" element={<ProtectedRoute><RoleGate allow={['admin']} fallback={<Navigate to="/settings" replace />}><ScoringConfig /></RoleGate></ProtectedRoute>} />
             <Route path="/integrations"     element={<ProtectedRoute><Integrations /></ProtectedRoute>} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

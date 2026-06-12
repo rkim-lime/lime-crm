@@ -12,6 +12,7 @@ import { useIsAdmin } from '../components/RoleGate';
 import { useContact, useContactAccounts, useUnlinkContactFromAccount, useDeleteContact, useArchiveContact } from '../hooks/useContacts';
 import { useActivities } from '../hooks/useActivities';
 import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, LeadScore, ActivityIcon, fmtRelTime, ErrorBanner } from './shared';
+import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
 export default function ContactDetail() {
   const { id } = useParams();
@@ -99,6 +100,14 @@ export default function ContactDetail() {
             <Field label="FINRA registered"    value={c.finra_registered ? 'Yes' : 'No'} />
             <Field label="FINRA CRD"           value={c.finra_crd} mono />
           </div>
+
+          {/* Score card — pro tier only */}
+          {c.tier === 'pro' && (
+            <>
+              <ScoreCard tier="pro" record={c} title="Contact Score" />
+              <ScoreHistoryMini recordType="contact" recordId={c.id} />
+            </>
+          )}
 
           {c.notes && (
             <div className="card card-body">

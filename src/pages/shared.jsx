@@ -110,9 +110,16 @@ export function fmtDate(iso) {
 }
 
 export function LeadScore({ score }) {
-  if (score == null) return null;
-  const color = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--text-tertiary)';
-  return <span style={{ fontWeight: 600, color, fontSize: 13 }}>{score}</span>;
+  if (score == null) return <span style={{ color: 'var(--text-tertiary)', fontSize: 13 }}>—</span>;
+  const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 72 }}>
+      <div style={{ flex: 1, height: 4, background: 'var(--bg-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 2 }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 22, textAlign: 'right' }}>{score}</span>
+    </div>
+  );
 }
 
 export function TableSkeleton({ cols = 5, rows = 6 }) {

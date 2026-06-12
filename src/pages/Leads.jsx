@@ -54,8 +54,15 @@ const STATUS_COLOR = {
 
 function ScorePill({ score }) {
   if (score == null) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
-  const color = score >= 80 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--text-tertiary)';
-  return <span style={{ fontSize: 12.5, fontWeight: 700, color }}>{score}</span>;
+  const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 72 }}>
+      <div style={{ flex: 1, height: 4, background: 'var(--bg-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 2 }} />
+      </div>
+      <span style={{ fontSize: 12, fontWeight: 700, color, minWidth: 22, textAlign: 'right' }}>{score}</span>
+    </div>
+  );
 }
 
 export default function Leads() {

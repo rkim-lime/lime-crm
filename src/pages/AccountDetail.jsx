@@ -14,6 +14,7 @@ import { useDeals } from '../hooks/useDeals';
 import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
 import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner } from './shared';
+import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
 const TABS = ['Overview', 'Documents'];
 
@@ -127,6 +128,14 @@ export default function AccountDetail() {
               <Field label="Accredited investor" value={a.accredited_investor == null ? '—' : a.accredited_investor ? 'Yes' : 'No'} />
               <Field label="FINRA member"        value={a.finra_member ? 'Yes' : 'No'} />
             </div>
+
+            {/* Score card — enterprise only */}
+            {a.tier === 'enterprise' && (
+              <>
+                <ScoreCard tier="enterprise" record={a} title="Account Score" />
+                <ScoreHistoryMini recordType="account" recordId={a.id} />
+              </>
+            )}
 
             {a.notes && (
               <div className="card card-body">
