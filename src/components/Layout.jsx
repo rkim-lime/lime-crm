@@ -14,6 +14,7 @@ const NAV_SECTIONS = [
       { to: '/pipeline/enterprise', label: 'Enterprise',  icon: '⬡' },
       { to: '/pipeline/pro',        label: 'Pro',          icon: '⬡' },
       { to: '/pipeline/individual', label: 'Individual',   icon: '⬡' },
+      { to: '/leads',               label: 'Leads',        icon: '◈' },
     ],
   },
   {
@@ -35,9 +36,10 @@ const NAV_SECTIONS = [
   {
     label: 'Reports',
     items: [
-      { to: '/funnel',    label: 'Funnels',       icon: '⬇' },
-      { to: '/analytics', label: 'Analytics',     icon: '▲' },
-      { to: '/reports',   label: 'Reports',       icon: '☰' },
+      { to: '/funnel',               label: 'Funnels',      icon: '⬇' },
+      { to: '/analytics',            label: 'Analytics',    icon: '▲' },
+      { to: '/reports',              label: 'Reports',      icon: '☰' },
+      { to: '/reports/lead-hygiene', label: 'Lead Hygiene', icon: '◍' },
     ],
   },
   {

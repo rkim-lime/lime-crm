@@ -11,6 +11,8 @@ import AccountDetail from './pages/AccountDetail';
 import Contacts      from './pages/Contacts';
 import ContactDetail from './pages/ContactDetail';
 import Deals         from './pages/Deals';
+import Leads         from './pages/Leads';
+import LeadDetail    from './pages/LeadDetail';
 import Funnel        from './pages/Funnel';
 import Tasks         from './pages/Tasks';
 import Activity      from './pages/Activity';
@@ -19,6 +21,7 @@ import Analytics     from './pages/Analytics';
 import Reports       from './pages/Reports';
 import Settings      from './pages/Settings';
 import Integrations  from './pages/Integrations';
+import LeadHygiene   from './pages/reports/LeadHygiene';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -47,7 +50,10 @@ export default function App() {
             <Route path="/contacts/:id"     element={<ProtectedRoute><ContactDetail /></ProtectedRoute>} />
             <Route path="/deals"            element={<ProtectedRoute><Deals /></ProtectedRoute>} />
             <Route path="/deals/:id"        element={<ProtectedRoute><Deals /></ProtectedRoute>} />
+            <Route path="/leads"            element={<ProtectedRoute><Leads /></ProtectedRoute>} />
+            <Route path="/leads/:id"        element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
             <Route path="/funnel"           element={<ProtectedRoute><Funnel /></ProtectedRoute>} />
+            <Route path="/reports/lead-hygiene" element={<ProtectedRoute><LeadHygiene /></ProtectedRoute>} />
             <Route path="/tasks"            element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
             <Route path="/activity"         element={<ProtectedRoute><Activity /></ProtectedRoute>} />
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />

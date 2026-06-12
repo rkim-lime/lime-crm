@@ -5,6 +5,7 @@ import { useAccounts } from '../hooks/useAccounts';
 import { useDeals } from '../hooks/useDeals';
 import { useContacts } from '../hooks/useContacts';
 import { useActivities } from '../hooks/useActivities';
+import { useLeads, useLeadMetrics, useOrphanedConversions } from '../hooks/useLeads';
 import { useProfiles } from '../hooks/useDashboard';
 import { SegmentBadge, StageBadge, AssetPills, LeadScore, StatusBadge, fmtCurrency, fmtRelTime, ActivityIcon } from './shared';
 
@@ -21,15 +22,15 @@ const B2B_STAGES = [
 ];
 
 const IND_STAGES = [
-  { key: 'lead_in',       label: 'Lead In' },
-  { key: 'engaged',       label: 'Engaged' },
-  { key: 'api_demo',      label: 'API Demo' },
-  { key: 'kyc_submitted', label: 'KYC Sub.' },
-  { key: 'kyc_approved',  label: 'KYC OK' },
-  { key: 'funded',        label: 'Funded' },
-  { key: 'first_trade',   label: '1st Trade' },
-  { key: 'active_trader', label: 'Active' },
-  { key: 'dormant',       label: 'Dormant' },
+  { key: 'visitor',     label: 'Visitor' },
+  { key: 'lead',        label: 'Lead' },
+  { key: 'nurture',     label: 'Nurture' },
+  { key: 'activated',   label: 'Activated' },
+  { key: 'funded',      label: 'Funded' },
+  { key: 'first_trade', label: '1st Trade' },
+  { key: 'active',      label: 'Active' },
+  { key: 'dormant',     label: 'Dormant' },
+  { key: 'churned',     label: 'Churned' },
 ];
 
 const B2B_CLOSED = ['live', 'lost'];
@@ -41,7 +42,6 @@ const TIER_COLOR = {
   individual: 'var(--tier-individual)',
 };
 
-// Amber gradient — one stop per individual stage (light → dark)
 const AMBER = [
   '#fef3c7','#fde68a','#fcd34d','#fbbf24',
   '#f59e0b','#d97706','#b45309','#92400e','#78350f',
@@ -57,7 +57,6 @@ export default function Dashboard() {
 
   return (
     <Layout title="Dashboard">
-      {/* Tab bar + owner filter */}
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 20, borderBottom: '1px solid var(--border-subtle)', gap: 12 }}>
         <div style={{ display: 'flex' }}>
           {[['enterprise','Enterprise'],['pro','Pro'],['individual','Individual']].map(([key, label]) => (
@@ -107,7 +106,6 @@ function EnterpriseTab({ owner, navigate }) {
     : 0;
   const activeAccounts = (accounts.data ?? []).filter(a => a.status === 'active').length;
 
-  // Group deals by account for last-touch and current stage
   const byAcct = {};
   allDeals.forEach(d => {
     if (!d.account_id) return;
@@ -233,48 +231,55 @@ function ProTab({ owner, navigate }) {
 
 // ── Individual Tab ────────────────────────────────────────────────────────────
 function IndividualTab({ owner, navigate }) {
-  const contacts   = useContacts({ tier: 'individual' });
-  const deals      = useDeals({ tier: 'individual' });
+  const metrics    = useLeadMetrics();
+  const leads      = useLeads(owner ? { owner } : {});
+  const orphaned   = useOrphanedConversions();
   const activities = useActivities({ limit: 8 });
   const color      = TIER_COLOR.individual;
 
-  const allDeals     = deals.data ?? [];
-  const allContacts  = contacts.data ?? [];
-  const totalContacts = allContacts.length;
+  const m           = metrics.data;
+  const byStage     = m?.byStage ?? {};
+  const orphanCount = orphaned.data?.length ?? 0;
 
-  // Stage breakdown for funnel
-  const stageBreakdown = {};
-  allDeals.forEach(d => { stageBreakdown[d.stage] = (stageBreakdown[d.stage] ?? 0) + 1; });
-
-  // Metrics: map aspirational stage names to actual DB stage keys
-  const activated    = allDeals.filter(d => ['kyc_approved','funded','first_trade','active_trader'].includes(d.stage)).length;
-  const funded       = allDeals.filter(d => ['funded','first_trade','active_trader'].includes(d.stage)).length;
-  const activeTraders = stageBreakdown['active_trader'] ?? 0;
-
-  // Top contacts sorted by lead score
-  const topContacts = [...allContacts]
+  // Top leads sorted by lead_score desc
+  const topLeads = [...(leads.data ?? [])]
+    .filter(l => l.status === 'active')
     .sort((a, b) => (b.lead_score ?? 0) - (a.lead_score ?? 0))
-    .slice(0, 10)
-    .map(c => ({
-      ...c,
-      _stage: allDeals.find(d => d.contact_id === c.id)?.stage ?? null,
-      _touch: allDeals.find(d => d.contact_id === c.id)?.created_at ?? c.created_at,
-    }));
+    .slice(0, 10);
 
   return (
     <>
+      {/* Orphaned conversions warning */}
+      {orphanCount > 0 && (
+        <div
+          onClick={() => navigate('/reports/lead-hygiene')}
+          style={{
+            marginBottom: 16, padding: '10px 16px',
+            background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8,
+            fontSize: 13, color: '#92400e', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 8,
+          }}
+        >
+          <span>⚠</span>
+          <span>
+            <strong>{orphanCount}</strong> lead{orphanCount > 1 ? 's' : ''} marked converted with no linked deal.
+          </span>
+          <span style={{ marginLeft: 'auto', color: 'var(--accent)', fontWeight: 500 }}>Review →</span>
+        </div>
+      )}
+
       <div className="metrics-grid">
-        <MetricCard label="Total Contacts"  value={totalContacts} loading={contacts.isLoading} color={color} />
-        <MetricCard label="Activated"       value={activated}     loading={deals.isLoading}    color={color} />
-        <MetricCard label="Funded"          value={funded}        loading={deals.isLoading}    color={color} />
-        <MetricCard label="Active Traders"  value={activeTraders} loading={deals.isLoading}    color={color} />
+        <MetricCard label="Active Leads"   value={m?.totalLeads ?? '—'}    loading={metrics.isLoading} color={color} />
+        <MetricCard label="Activated"      value={m?.activated ?? '—'}     loading={metrics.isLoading} color={color} />
+        <MetricCard label="Funded"         value={m?.funded ?? '—'}        loading={metrics.isLoading} color={color} />
+        <MetricCard label="Active Traders" value={m?.activeTraders ?? '—'} loading={metrics.isLoading} color={color} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 284px', gap: 16, marginBottom: 24, alignItems: 'flex-start' }}>
         <div className="card" style={{ padding: '16px 20px' }}>
           <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>Individual Funnel</div>
-          {deals.isLoading
-            ? [1,2,3,4,5,6,7,8,9].map(i => (
+          {metrics.isLoading
+            ? IND_STAGES.map((_, i) => (
                 <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                   <div className="skeleton skeleton-text" style={{ width: 80 }} />
                   <div className="skeleton skeleton-text" style={{ flex: 1 }} />
@@ -282,9 +287,9 @@ function IndividualTab({ owner, navigate }) {
                 </div>
               ))
             : IND_STAGES.map(({ key, label }, i) => {
-                const count    = stageBreakdown[key] ?? 0;
-                const maxCount = Math.max(...IND_STAGES.map(s => stageBreakdown[s.key] ?? 0), 1);
-                const prevCount = i > 0 ? (stageBreakdown[IND_STAGES[i - 1].key] ?? 0) : null;
+                const count    = byStage[key] ?? 0;
+                const maxCount = Math.max(...IND_STAGES.map(s => byStage[s.key] ?? 0), 1);
+                const prevCount = i > 0 ? (byStage[IND_STAGES[i - 1].key] ?? 0) : null;
                 const conv      = prevCount != null && prevCount > 0 ? Math.round((count / prevCount) * 100) : null;
                 return (
                   <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -315,23 +320,30 @@ function IndividualTab({ owner, navigate }) {
         </div>
       </div>
 
-      <SectionLabel>Top Individual Contacts</SectionLabel>
+      <SectionLabel>Top Individual Leads</SectionLabel>
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th>Name</th><th>Current Stage</th><th>Assets</th><th>Lead Score</th><th>Last Touch</th></tr>
+            <tr><th>Name</th><th>Stage</th><th>Assets</th><th>Lead Score</th><th>Source</th></tr>
           </thead>
           <tbody>
-            {contacts.isLoading ? <SkeletonTR cols={5} /> : topContacts.map(c => (
-              <tr key={c.id} onClick={() => navigate(`/contacts/${c.id}`)}>
-                <td><div className="table-name">{c.first_name} {c.last_name}</div><div className="table-sub">{c.email}</div></td>
-                <td>{c._stage ? <StageBadge stage={c._stage} /> : <Dash />}</td>
-                <td><AssetPills classes={c.asset_classes} /></td>
-                <td><LeadScore score={c.lead_score} /></td>
-                <td style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>{fmtRelTime(c._touch)}</td>
+            {leads.isLoading ? <SkeletonTR cols={5} /> : topLeads.map(lead => (
+              <tr key={lead.id} onClick={() => navigate(`/leads/${lead.id}`)}>
+                <td>
+                  <div className="table-name">
+                    {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : '—'}
+                  </div>
+                  <div className="table-sub">{lead.contact?.email}</div>
+                </td>
+                <td><span className={`badge badge-${lead.stage}`}>{lead.stage?.replace(/_/g, ' ')}</span></td>
+                <td><AssetPills classes={lead.asset_classes} /></td>
+                <td><LeadScore score={lead.lead_score} /></td>
+                <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  {lead.source?.replace(/_/g, ' ') ?? '—'}
+                </td>
               </tr>
             ))}
-            {!contacts.isLoading && topContacts.length === 0 && <EmptyTR cols={5} text="No individual contacts" />}
+            {!leads.isLoading && topLeads.length === 0 && <EmptyTR cols={5} text="No individual leads" />}
           </tbody>
         </table>
       </div>

@@ -39,7 +39,7 @@ export function StageBadge({ stage }) {
     onboarding:        'Onboarding',
     live:              'Live',
     lost:              'Lost',
-    // Individual lifecycle
+    // Individual lifecycle (legacy deal stage names)
     lead_in:      'Lead In',
     engaged:      'Engaged',
     api_demo:     'API Demo',
@@ -49,6 +49,13 @@ export function StageBadge({ stage }) {
     first_trade:  'First Trade',
     active_trader:'Active Trader',
     dormant:      'Dormant',
+    // Individual lead stages (leads table)
+    visitor:      'Visitor',
+    lead:         'Lead',
+    nurture:      'Nurture',
+    activated:    'Activated',
+    active:       'Active Trader',
+    churned:      'Churned',
   };
   return <span className={`badge badge-${stage}`}>{labels[stage] ?? stage}</span>;
 }
