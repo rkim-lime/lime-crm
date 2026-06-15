@@ -4,7 +4,7 @@ import Layout from '../../components/Layout';
 import DealForm from '../../components/DealForm';
 import { useUpsellOpportunities } from '../../hooks/useUpsellOpportunities';
 import { useProfiles } from '../../hooks/useDashboard';
-import { TierBadge, StatusBadge, StrategyAssetPills, UpsellGapPills, ErrorBanner, TableSkeleton, EmptyState } from '../shared';
+import { TierBadge, StatusBadge, RelevantAssetPills, UpsellGapPills, ErrorBanner, TableSkeleton, EmptyState } from '../shared';
 
 const SUPPORTED = ['equities', 'options', 'futures'];
 const GAP_LABELS = { equities: 'Equities', options: 'Options', futures: 'Futures' };
@@ -93,16 +93,16 @@ export default function UpsellOpportunities() {
                   </td>
                   <td><span style={{ fontSize: 13 }}>{account.sales_owner?.full_name ?? '—'}</span></td>
                   <td><StatusBadge status={account.status} /></td>
-                  <td><StrategyAssetPills classes={account.strategy_asset_classes} /></td>
+                  <td><RelevantAssetPills classes={account.relevant_asset_classes} /></td>
                   <td>
                     {account.sold_asset_classes?.length > 0
-                      ? <StrategyAssetPills classes={account.sold_asset_classes} />
+                      ? <RelevantAssetPills classes={account.sold_asset_classes} />
                       : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>None</span>
                     }
                   </td>
                   <td>
                     <UpsellGapPills
-                      strategyClasses={account.strategy_asset_classes}
+                      relevantClasses={account.relevant_asset_classes}
                       soldClasses={account.sold_asset_classes}
                     />
                   </td>

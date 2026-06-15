@@ -6,7 +6,7 @@ import { useProfiles } from '../hooks/useDashboard';
 import { useAuth } from '../hooks/useAuth.jsx';
 import RoleGate from './RoleGate';
 
-const STRATEGY_ASSET_LABELS = {
+const RELEVANT_ASSET_LABELS = {
   equities:     'Equities',
   options:      'Options',
   futures:      'Futures',
@@ -16,7 +16,7 @@ const STRATEGY_ASSET_LABELS = {
   other:        'Other',
 };
 
-const STRATEGY_ASSET_STYLES = {
+const RELEVANT_ASSET_STYLES = {
   equities:     { background: '#E6F1FB', color: '#185FA5' },
   options:      { background: '#EAF3DE', color: '#3B6D11' },
   futures:      { background: '#FAEEDA', color: '#854F0B' },
@@ -54,7 +54,7 @@ const ORDER_ROUTING = [
 const blank = {
   name: '', tier: '', segment: '', status: 'prospect',
   legal_entity_name: '', lei: '', mpid: '', jurisdiction: '',
-  strategy_asset_classes: [], sold_asset_classes: [], order_routing: '',
+  relevant_asset_classes: [], sold_asset_classes: [], order_routing: '',
   colo: false, market_data: false, hosting: false, cross_connect: false,
   avg_daily_volume_usd: '', aum_usd: '', website: '', notes: '',
   kyc_status: 'not_started', aml_status: 'clear',
@@ -79,7 +79,7 @@ export default function AccountForm({ account, onClose, onSuccess }) {
     lei:               account.lei               ?? '',
     mpid:              account.mpid              ?? '',
     jurisdiction:      account.jurisdiction      ?? '',
-    strategy_asset_classes: account.strategy_asset_classes ?? [],
+    relevant_asset_classes: account.relevant_asset_classes ?? [],
     sold_asset_classes:     account.sold_asset_classes     ?? [],
     order_routing:     account.order_routing?.[0] ?? '',
     colo:              account.colo              ?? false,
@@ -134,7 +134,7 @@ export default function AccountForm({ account, onClose, onSuccess }) {
       lei:               nullify(form.lei),
       mpid:              nullify(form.mpid),
       jurisdiction:      nullify(form.jurisdiction),
-      strategy_asset_classes: form.strategy_asset_classes ?? [],
+      relevant_asset_classes: form.relevant_asset_classes ?? [],
       sold_asset_classes:     form.sold_asset_classes     ?? [],
       order_routing:     form.order_routing ? [form.order_routing] : [],
       colo:              form.colo,
@@ -167,7 +167,7 @@ export default function AccountForm({ account, onClose, onSuccess }) {
   };
 
   const segments = TIER_SEGMENTS[form.tier] ?? [];
-  const upsellGap = (form.strategy_asset_classes ?? []).filter(c =>
+  const upsellGap = (form.relevant_asset_classes ?? []).filter(c =>
     ['equities', 'options', 'futures'].includes(c) &&
     !(form.sold_asset_classes ?? []).includes(c)
   );
@@ -247,17 +247,17 @@ export default function AccountForm({ account, onClose, onSuccess }) {
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
               {['equities','options','futures','crypto','fixed_income','fx','other'].map(cls => {
-                const active = (form.strategy_asset_classes ?? []).includes(cls);
+                const active = (form.relevant_asset_classes ?? []).includes(cls);
                 return (
                   <button
                     key={cls}
                     type="button"
                     onClick={() => {
-                      const current = form.strategy_asset_classes ?? [];
+                      const current = form.relevant_asset_classes ?? [];
                       const updated = current.includes(cls)
                         ? current.filter(c => c !== cls)
                         : [...current, cls];
-                      setForm(f => ({ ...f, strategy_asset_classes: updated }));
+                      setForm(f => ({ ...f, relevant_asset_classes: updated }));
                     }}
                     style={{
                       padding: '4px 12px',
@@ -266,17 +266,17 @@ export default function AccountForm({ account, onClose, onSuccess }) {
                       cursor: 'pointer',
                       fontWeight: '500',
                       border: active
-                        ? `2px solid ${STRATEGY_ASSET_STYLES[cls]?.color}`
+                        ? `2px solid ${RELEVANT_ASSET_STYLES[cls]?.color}`
                         : '1px solid #e5e5e5',
                       background: active
-                        ? STRATEGY_ASSET_STYLES[cls]?.background
+                        ? RELEVANT_ASSET_STYLES[cls]?.background
                         : 'transparent',
                       color: active
-                        ? STRATEGY_ASSET_STYLES[cls]?.color
+                        ? RELEVANT_ASSET_STYLES[cls]?.color
                         : 'var(--text-secondary)',
                     }}
                   >
-                    {STRATEGY_ASSET_LABELS[cls]}
+                    {RELEVANT_ASSET_LABELS[cls]}
                   </button>
                 );
               })}
@@ -323,7 +323,7 @@ export default function AccountForm({ account, onClose, onSuccess }) {
             </div>
             {upsellGap.length > 0 && (
               <div style={{ marginTop: '8px', padding: '8px 10px', background: '#FAEEDA', borderRadius: '4px', fontSize: '12px', color: '#854F0B' }}>
-                💡 Upsell opportunity: {upsellGap.map(c => STRATEGY_ASSET_LABELS[c] || c).join(', ')}
+                💡 Upsell opportunity: {upsellGap.map(c => RELEVANT_ASSET_LABELS[c] || c).join(', ')}
               </div>
             )}
           </div>

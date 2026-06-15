@@ -161,7 +161,7 @@ export function EmptyState({ icon = '○', text }) {
   );
 }
 
-const STRATEGY_ASSET_LABELS = {
+const RELEVANT_ASSET_LABELS = {
   equities:     'Equities',
   options:      'Options',
   futures:      'Futures',
@@ -171,7 +171,7 @@ const STRATEGY_ASSET_LABELS = {
   other:        'Other',
 };
 
-const STRATEGY_ASSET_STYLES = {
+const RELEVANT_ASSET_STYLES = {
   equities:     { background: '#E6F1FB', color: '#185FA5' },
   options:      { background: '#EAF3DE', color: '#3B6D11' },
   futures:      { background: '#FAEEDA', color: '#854F0B' },
@@ -181,9 +181,9 @@ const STRATEGY_ASSET_STYLES = {
   other:        { background: '#F1F5F9', color: '#475569' },
 };
 
-export function StrategyAssetPill({ value }) {
-  const style = STRATEGY_ASSET_STYLES[value] || STRATEGY_ASSET_STYLES.other;
-  const label = STRATEGY_ASSET_LABELS[value] || value;
+export function RelevantAssetPill({ value }) {
+  const style = RELEVANT_ASSET_STYLES[value] || RELEVANT_ASSET_STYLES.other;
+  const label = RELEVANT_ASSET_LABELS[value] || value;
   return (
     <span style={{
       ...style,
@@ -200,20 +200,20 @@ export function StrategyAssetPill({ value }) {
   );
 }
 
-export function StrategyAssetPills({ classes = [] }) {
+export function RelevantAssetPills({ classes = [] }) {
   if (!classes || classes.length === 0)
     return <span style={{ color: '#888', fontSize: '12px' }}>—</span>;
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-      {classes.map(c => <StrategyAssetPill key={c} value={c} />)}
+      {classes.map(c => <RelevantAssetPill key={c} value={c} />)}
     </div>
   );
 }
 
 const UPSELL_SUPPORTED = ['equities', 'options', 'futures'];
 
-export function UpsellGapPills({ strategyClasses = [], soldClasses = [] }) {
-  const gap = (strategyClasses || []).filter(c =>
+export function UpsellGapPills({ relevantClasses = [], soldClasses = [] }) {
+  const gap = (relevantClasses || []).filter(c =>
     UPSELL_SUPPORTED.includes(c) && !(soldClasses || []).includes(c)
   );
   if (gap.length === 0) return null;
@@ -230,7 +230,7 @@ export function UpsellGapPills({ strategyClasses = [], soldClasses = [] }) {
           fontWeight: '500',
           display: 'inline-block',
         }}>
-          ↑ {STRATEGY_ASSET_LABELS[c] || c}
+          ↑ {RELEVANT_ASSET_LABELS[c] || c}
         </span>
       ))}
     </div>

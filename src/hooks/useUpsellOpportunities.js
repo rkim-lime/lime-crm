@@ -11,17 +11,17 @@ export function useUpsellOpportunities(filters = {}) {
         .from('accounts')
         .select(`
           id, name, segment, tier, status,
-          strategy_asset_classes,
+          relevant_asset_classes,
           sold_asset_classes,
           sales_owner:sales_owner_id(id, full_name, email)
         `)
-        .not('strategy_asset_classes', 'eq', '{}');
+        .not('relevant_asset_classes', 'eq', '{}');
 
       if (error) throw error;
 
       return (data || [])
         .map(account => {
-          const gap = (account.strategy_asset_classes || []).filter(c =>
+          const gap = (account.relevant_asset_classes || []).filter(c =>
             SUPPORTED.includes(c) && !(account.sold_asset_classes || []).includes(c)
           );
           return { ...account, gap };

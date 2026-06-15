@@ -16,7 +16,7 @@ import { useAccount, useAccountContacts, useDeleteAccount, useArchiveAccount } f
 import { useDeals } from '../hooks/useDeals';
 import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner, StrategyAssetPills, StrategyAssetPill, UpsellGapPills } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner, RelevantAssetPills, RelevantAssetPill, UpsellGapPills } from './shared';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
 const TABS = ['Overview', 'Documents'];
@@ -153,19 +153,19 @@ export default function AccountDetail() {
 
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Trades</div>
-                  <StrategyAssetPills classes={a.strategy_asset_classes} />
+                  <RelevantAssetPills classes={a.relevant_asset_classes} />
                 </div>
 
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Contracted with Us</div>
                   {a.sold_asset_classes?.length > 0
-                    ? a.sold_asset_classes.map(c => <StrategyAssetPill key={c} value={c} />)
+                    ? a.sold_asset_classes.map(c => <RelevantAssetPill key={c} value={c} />)
                     : <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>None contracted yet</span>
                   }
                 </div>
 
                 {(() => {
-                  const gap = (a.strategy_asset_classes || []).filter(c =>
+                  const gap = (a.relevant_asset_classes || []).filter(c =>
                     ['equities','options','futures'].includes(c) &&
                     !(a.sold_asset_classes || []).includes(c)
                   );
@@ -173,7 +173,7 @@ export default function AccountDetail() {
                   return (
                     <div style={{ background: '#FAEEDA', borderRadius: '6px', padding: '8px 10px', marginTop: '8px' }}>
                       <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Upsell Opportunity</div>
-                      <UpsellGapPills strategyClasses={a.strategy_asset_classes} soldClasses={a.sold_asset_classes} />
+                      <UpsellGapPills relevantClasses={a.relevant_asset_classes} soldClasses={a.sold_asset_classes} />
                       <button
                         onClick={() => setDealFormOpen(true)}
                         style={{ marginTop: '8px', fontSize: '11px', color: '#854F0B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}

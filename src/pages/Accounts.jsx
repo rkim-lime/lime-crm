@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccounts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
 import { useAuth } from '../hooks/useAuth.jsx';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StrategyAssetPill, UpsellGapPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, RelevantAssetPill, UpsellGapPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const TIER_SEGMENTS = {
   enterprise: ['hft_firm','hedge_fund','quant_fund','broker_dealer','family_office','prime_broker'],
@@ -49,7 +49,7 @@ export default function Accounts() {
 
   const data = hasUpsell
     ? rawData?.filter(a => {
-        const gap = (a.strategy_asset_classes || []).filter(c =>
+        const gap = (a.relevant_asset_classes || []).filter(c =>
           UPSELL_CLASSES.includes(c) && !(a.sold_asset_classes || []).includes(c)
         );
         return gap.length > 0;
@@ -145,10 +145,10 @@ export default function Accounts() {
                   <td>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
                       {(a.sold_asset_classes || []).map(c => (
-                        <StrategyAssetPill key={c} value={c} />
+                        <RelevantAssetPill key={c} value={c} />
                       ))}
                       <UpsellGapPills
-                        strategyClasses={a.strategy_asset_classes}
+                        relevantClasses={a.relevant_asset_classes}
                         soldClasses={a.sold_asset_classes}
                       />
                     </div>
