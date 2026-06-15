@@ -12,6 +12,7 @@ import { useDeal, useUpdateDeal, useDeleteDeal, useCloseDeal } from '../hooks/us
 import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
+import DealTeamPanel from '../components/DealTeamPanel';
 import {
   TierBadge, StageBadge, AssetPills, KycBadge, ActivityIcon,
   fmtCurrency, fmtDate, fmtRelTime, ErrorBanner,
@@ -98,8 +99,17 @@ export default function DealDetail() {
 
   const openTasks = tasks.data?.filter(t => t.status !== 'completed') ?? [];
 
+  const needsServiceManager = ['onboarding', 'live'].includes(d.stage) && d.account?.id && !d.account?.service_manager_id;
+
   return (
     <Layout title={d.name}>
+      {needsServiceManager && (
+        <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ This account needs a Service Manager before going Live</span>
+          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
+          <a href={`/accounts/${d.account.id}`} style={{ color: 'var(--accent)', fontWeight: 500 }}>Go to Account →</a>
+        </div>
+      )}
       {/* Header */}
       <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('/deals')}>← Deals</button>
@@ -141,6 +151,9 @@ export default function DealDetail() {
             <DetailRow label="Close Date">{fmtDate(d.close_date)}</DetailRow>
             <DetailRow label="Asset Classes">
               <AssetPills classes={d.asset_classes} />
+            </DetailRow>
+            <DetailRow label="Sales Owner">
+              {d.sales_owner ? (d.sales_owner.full_name || d.sales_owner.email) : null}
             </DetailRow>
           </div>
 
@@ -222,6 +235,8 @@ export default function DealDetail() {
               </div>
             </Section>
           )}
+
+          <DealTeamPanel dealId={d.id} />
 
           <Section title="Open Tasks" count={openTasks.length}>
             {tasks.isLoading ? <Skel /> : openTasks.length === 0 ? <Empty text="No open tasks" /> : openTasks.map(t => (

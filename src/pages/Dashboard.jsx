@@ -75,7 +75,7 @@ export default function Dashboard() {
         </div>
         <div style={{ marginBottom: 8 }}>
           <select className="filter-select" value={ownerFilter} onChange={e => setOwnerFilter(e.target.value)}>
-            <option value="">All Owners</option>
+            <option value="">All Sales Owners</option>
             {(profiles.data ?? []).map(p => (
               <option key={p.id} value={p.id}>{p.full_name || p.email || 'Unnamed'}</option>
             ))}

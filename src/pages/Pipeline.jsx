@@ -82,6 +82,7 @@ export default function Pipeline() {
     estimated_commission: null,
     probability:  null,
     account:      null,
+    sales_owner:  l.sales_owner,
     _raw:         l,
   }));
 
@@ -373,6 +374,23 @@ function KanbanCard({ item, isIndividual, isAdmin, onEdit, onConvert, onPromote,
           <span className="kanban-card-prob">{item.probability}%</span>
         </div>
       )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+        <span>
+          {!isIndividual && ['onboarding','live'].includes(item.stage) && !item.account?.service_manager_id && (
+            <span title="Account needs a Service Manager" style={{ fontSize: 13, color: '#d97706' }}>⚠</span>
+          )}
+        </span>
+        {item.sales_owner?.full_name && (
+          <div title={item.sales_owner.full_name} style={{
+            width: 22, height: 22, borderRadius: '50%',
+            background: 'var(--bg-tertiary)', flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 9.5, fontWeight: 700, color: 'var(--text-secondary)',
+          }}>
+            {item.sales_owner.full_name.split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase()}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

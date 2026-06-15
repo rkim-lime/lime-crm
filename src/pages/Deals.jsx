@@ -7,6 +7,7 @@ import ActionMenu from '../components/ActionMenu';
 import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useDealsWithScores, useUpdateDeal, useDeleteDeal } from '../hooks/useDeals';
+import { useAuth } from '../hooks/useAuth.jsx';
 import { TierBadge, StageBadge, AssetPills, fmtCurrency, fmtDate, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const INST_STAGES = [
@@ -37,12 +38,16 @@ export default function Deals() {
   const [search, setSearch]     = useState('');
   const [stage, setStage]       = useState('');
   const [tier, setTier]         = useState('');
+  const [myOwner, setMyOwner]   = useState(false);
   const [dealForm, setDealForm] = useState(null);
   const [confirm, setConfirm]   = useState(null); // { deal }
   const navigate = useNavigate();
   const isAdmin  = useIsAdmin();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
 
-  const { data, isLoading, error, refetch } = useDealsWithScores({ search, stage, tier });
+  const myOwnerFilter = myOwner ? currentUserId : undefined;
+  const { data, isLoading, error, refetch } = useDealsWithScores({ search, stage, tier, myOwner: myOwnerFilter });
   const update = useUpdateDeal();
   const deleteDeal = useDeleteDeal();
 
@@ -69,6 +74,12 @@ export default function Deals() {
           <option value="">All stages</option>
           {stagesForFilter.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
+        <button
+          className={`btn btn-sm${myOwner ? ' btn-primary' : ' btn-secondary'}`}
+          onClick={() => setMyOwner(v => !v)}
+        >
+          My Deals {myOwner && data ? `(${data.length})` : ''}
+        </button>
         <span style={{ flex: 1 }} />
         <RoleGate allow={['admin','sales']}>
           <button className="btn btn-primary btn-sm" onClick={() => setDealForm('create')}>+ New Deal</button>

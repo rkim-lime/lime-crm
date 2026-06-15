@@ -8,6 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import TaskForm from '../components/TaskForm';
 import LogActivityModal from '../components/LogActivityModal';
 import DocumentUpload from '../components/DocumentUpload';
+import AssignServiceManagerModal from '../components/AssignServiceManagerModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccount, useAccountContacts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
 import { useDeals } from '../hooks/useDeals';
@@ -34,6 +35,7 @@ export default function AccountDetail() {
   const [taskOpen, setTaskOpen]     = useState(false);
   const [activityOpen, setActivity] = useState(false);
   const [confirm, setConfirm]       = useState(null); // { type: 'delete'|'archive' }
+  const [assignSmOpen, setAssignSmOpen] = useState(false);
   const isAdmin = useIsAdmin();
 
   const account    = useAccount(id);
@@ -126,6 +128,23 @@ export default function AccountDetail() {
               <Field label="AUM (USD)"      value={a.aum_usd ? `$${(a.aum_usd/1e9).toFixed(2)}B` : null} />
               <Field label="Website"        value={a.website} link />
               <Field label="Asset classes"><AssetPills classes={a.asset_classes} /></Field>
+              <Field label="Sales Owner">
+                {a.sales_owner
+                  ? <span style={{ fontWeight: 500 }}>{a.sales_owner.full_name || a.sales_owner.email}</span>
+                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+              </Field>
+              <Field label="Service Manager">
+                {a.service_manager ? (
+                  <span style={{ fontWeight: 500 }}>{a.service_manager.full_name || a.service_manager.email}</span>
+                ) : ['active', 'onboarding'].includes(a.status) ? (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ color: '#d97706', fontWeight: 500, fontSize: 12.5 }}>⚠ Service Manager required</span>
+                    <button className="btn btn-secondary btn-sm" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setAssignSmOpen(true)}>Assign</button>
+                  </span>
+                ) : (
+                  <span style={{ color: 'var(--text-tertiary)' }}>Not yet assigned</span>
+                )}
+              </Field>
             </div>
 
             <div className="card card-body">
@@ -230,6 +249,7 @@ export default function AccountDetail() {
       )}
 
       {editOpen     && <AccountForm account={a} onClose={() => setEditOpen(false)} onSuccess={() => setEditOpen(false)} />}
+      {assignSmOpen && <AssignServiceManagerModal account={a} onClose={() => setAssignSmOpen(false)} />}
       {taskOpen     && <TaskForm defaults={{ account_id: id }} onClose={() => setTaskOpen(false)} />}
       {activityOpen && <LogActivityModal defaults={{ account_id: id }} onClose={() => setActivity(false)} onSuccess={() => setActivity(false)} />}
 

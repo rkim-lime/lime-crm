@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 
 const FIELDS = `
-  id, contact_id, owner_id, created_by, stage, status,
+  id, contact_id, sales_owner_id, created_by, stage, status,
   source, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
   referrer_contact_id, asset_classes, uses_rest_api, uses_fix,
   programming_languages, lead_score, funded_amount,
@@ -11,7 +11,8 @@ const FIELDS = `
   churn_reason, converted_at, converted_to_deal_id, converted_to_tier,
   conversion_notes, notes, tags, created_at, updated_at,
   contact:contact_id(id, first_name, last_name, email, phone, tier, segment),
-  referrer:referrer_contact_id(id, first_name, last_name, email)
+  referrer:referrer_contact_id(id, first_name, last_name, email),
+  sales_owner:sales_owner_id(id, full_name, email, avatar_url)
 `;
 
 async function logActivity(payload) {
@@ -34,11 +35,11 @@ export function useLeads(filters = {}) {
         .order('created_at', { ascending: false });
       if (filters.status)  q = q.eq('status', filters.status);
       if (filters.stage)   q = q.eq('stage', filters.stage);
-      if (filters.owner)   q = q.eq('owner_id', filters.owner);
+      if (filters.owner)   q = q.eq('sales_owner_id', filters.owner);
+      if (filters.myOwner) q = q.eq('sales_owner_id', filters.myOwner);
       if (filters.source)  q = q.eq('source', filters.source);
       if (filters.contact) q = q.eq('contact_id', filters.contact);
       if (filters.search) {
-        // Search via contact name
         q = q.or(
           `contact.first_name.ilike.%${filters.search}%,contact.last_name.ilike.%${filters.search}%`,
         );
@@ -116,7 +117,7 @@ export function useCreateLead() {
         .insert({
           ...payload,
           created_by: userId,
-          owner_id: payload.owner_id ?? userId,
+          sales_owner_id: payload.sales_owner_id ?? userId,
         })
         .select()
         .single();
@@ -135,7 +136,6 @@ export function useUpdateLead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, _prevStage, _prevStatus, ...payload }) => {
-      // Auto-set churned_at / clear it on status transitions
       if (payload.status === 'churned' && _prevStatus !== 'churned') {
         payload.churned_at = new Date().toISOString();
       } else if (payload.status === 'active' && _prevStatus === 'churned') {

@@ -87,18 +87,18 @@ export default function Contacts() {
 
       {error && <ErrorBanner message={error.message} onRetry={refetch} />}
 
-      {isLoading ? <TableSkeleton cols={7} /> : (
+      {isLoading ? <TableSkeleton cols={8} /> : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Name</th><th>Tier</th><th>Segment</th><th>Status</th>
-                <th>Score</th><th>Asset classes</th><th>KYC</th>
+                <th>Score</th><th>Asset classes</th><th>KYC</th><th>Sales Owner</th>
                 <th style={{ width: 48 }} />
               </tr>
             </thead>
             <tbody>
-              {!data?.length && <tr><td colSpan={8}><EmptyState icon="👤" text="No contacts found" /></td></tr>}
+              {!data?.length && <tr><td colSpan={9}><EmptyState icon="👤" text="No contacts found" /></td></tr>}
               {data?.map(c => (
                 <tr
                   key={c.id}
@@ -115,6 +115,7 @@ export default function Contacts() {
                   <td>{c.tier === 'individual' ? <LeadScore score={c.lead_score} /> : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}</td>
                   <td><AssetPills classes={c.asset_classes} /></td>
                   <td><KycBadge status={c.kyc_status} /></td>
+                  <td><span style={{ fontSize: 13 }}>{c.sales_owner?.full_name ?? '—'}</span></td>
                   <td onClick={e => e.stopPropagation()}>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => setPanel(c) },

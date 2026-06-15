@@ -7,6 +7,7 @@ import ActionMenu from '../components/ActionMenu';
 import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccounts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
+import { useAuth } from '../hooks/useAuth.jsx';
 import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const TIER_SEGMENTS = {
@@ -27,16 +28,19 @@ export default function Accounts() {
   const [tier, setTier]       = useState('');
   const [segment, setSegment] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [myOwner, setMyOwner] = useState(false);
   const [panel, setPanel]     = useState(null);
   const [confirm, setConfirm] = useState(null); // { type: 'delete'|'archive', account }
   const navigate  = useNavigate();
   const isAdmin   = useIsAdmin();
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
 
   const visibleSegments = tier ? (TIER_SEGMENTS[tier] ?? ALL_SEGMENTS) : ALL_SEGMENTS;
   const handleTierChange = (t) => { setTier(t); if (t && segment && !TIER_SEGMENTS[t]?.includes(segment)) setSegment(''); };
 
-  // Pass status to query: '' = all, 'active' = active only, 'inactive' = inactive only
-  const { data, isLoading, error, refetch } = useAccounts({ search, tier, segment, status: statusFilter });
+  const myOwnerFilter = myOwner ? currentUserId : undefined;
+  const { data, isLoading, error, refetch } = useAccounts({ search, tier, segment, status: statusFilter, myOwner: myOwnerFilter });
   const deleteAccount  = useDeleteAccount();
   const archiveAccount = useArchiveAccount();
 
@@ -81,6 +85,12 @@ export default function Accounts() {
             >{lbl}</button>
           ))}
         </div>
+        <button
+          className={`btn btn-sm${myOwner ? ' btn-primary' : ' btn-secondary'}`}
+          onClick={() => setMyOwner(v => !v)}
+        >
+          My Accounts {myOwner && data ? `(${data.length})` : ''}
+        </button>
         <span style={{ flex: 1 }} />
         <RoleGate allow={['admin','sales','operations']}>
           <button className="btn btn-primary btn-sm" onClick={() => setPanel('create')}>+ New Account</button>
@@ -89,18 +99,19 @@ export default function Accounts() {
 
       {error && <ErrorBanner message={error.message} onRetry={refetch} />}
 
-      {isLoading ? <TableSkeleton cols={7} /> : (
+      {isLoading ? <TableSkeleton cols={9} /> : (
         <div className="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>Account</th><th>Tier</th><th>Segment</th><th>Status</th>
                 <th>Asset classes</th><th>KYC</th><th>ADV</th>
+                <th>Sales Owner</th><th>Service Manager</th>
                 <th style={{ width: 48 }} />
               </tr>
             </thead>
             <tbody>
-              {!data?.length && <tr><td colSpan={8}><EmptyState icon="🏢" text="No accounts found" /></td></tr>}
+              {!data?.length && <tr><td colSpan={10}><EmptyState icon="🏢" text="No accounts found" /></td></tr>}
               {data?.map(a => (
                 <tr
                   key={a.id}
@@ -117,6 +128,15 @@ export default function Accounts() {
                   <td><AssetPills classes={a.asset_classes} /></td>
                   <td><KycBadge status={a.kyc_status} /></td>
                   <td>{a.avg_daily_volume_usd ? <span style={{ fontSize:13 }}>${(a.avg_daily_volume_usd/1_000_000).toFixed(0)}M</span> : <span className="text-tertiary">—</span>}</td>
+                  <td><span style={{ fontSize: 13 }}>{a.sales_owner?.full_name ?? '—'}</span></td>
+                  <td>
+                    {a.service_manager
+                      ? <span style={{ fontSize: 13 }}>{a.service_manager.full_name}</span>
+                      : ['active', 'onboarding'].includes(a.status)
+                        ? <span style={{ fontSize: 12, color: '#d97706', fontWeight: 600 }}>⚠ Needed</span>
+                        : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>
+                    }
+                  </td>
                   <td onClick={e => e.stopPropagation()}>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => setPanel(a) },

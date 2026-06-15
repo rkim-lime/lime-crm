@@ -171,7 +171,7 @@ export default function LeadDetail() {
             <DetailRow label="Stage"><StageBadgeInd stage={l.stage} /></DetailRow>
             <DetailRow label="Status"><StatusBadge status={l.status} /></DetailRow>
             <DetailRow label="Source">{l.source?.replace(/_/g, ' ')}</DetailRow>
-            <DetailRow label="Owner">{l.owner_id ?? 'Unassigned'}</DetailRow>
+            <DetailRow label="Sales Owner">{l.sales_owner?.full_name ?? 'Unassigned'}</DetailRow>
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>Asset Classes</div>
               <AssetPills classes={l.asset_classes} />

@@ -49,7 +49,7 @@ const blank = {
   contact_id: '',
   stage: 'lead',
   status: 'active',
-  owner_id: '',
+  sales_owner_id: '',
   source: '',
   lead_score: 0,
   utm_source: '',
@@ -77,7 +77,7 @@ export default function LeadForm({ lead, defaultContactId, onClose, onSuccess })
     contact_id:          lead.contact_id          ?? '',
     stage:               lead.stage               ?? 'lead',
     status:              lead.status              ?? 'active',
-    owner_id:            lead.owner_id            ?? '',
+    sales_owner_id:      lead.sales_owner_id      ?? '',
     source:              lead.source              ?? '',
     lead_score:          lead.lead_score          ?? 0,
     utm_source:          lead.utm_source          ?? '',
@@ -134,7 +134,7 @@ export default function LeadForm({ lead, defaultContactId, onClose, onSuccess })
       contact_id:          form.contact_id,
       stage:               form.stage || 'lead',
       status:              form.status || 'active',
-      owner_id:            form.owner_id  || null,
+      sales_owner_id:      form.sales_owner_id || null,
       source:              form.source    || null,
       lead_score:          Number(form.lead_score) || 0,
       utm_source:          form.utm_source    || null,
@@ -217,11 +217,11 @@ export default function LeadForm({ lead, defaultContactId, onClose, onSuccess })
             <FormSelect label="Source" value={form.source} onChange={set('source')} options={SOURCE_OPTS} placeholder="Select source…" />
           </FormGrid>
           <FormSearchSelect
-            label="Owner"
+            label="Sales Owner"
             options={profileOpts}
-            value={form.owner_id}
-            onChange={set('owner_id')}
-            placeholder="Assign owner…"
+            value={form.sales_owner_id}
+            onChange={set('sales_owner_id')}
+            placeholder="Assign sales owner…"
           />
           <FormSlider label="Lead Score" value={form.lead_score} onChange={set('lead_score')} min={0} max={100} />
 

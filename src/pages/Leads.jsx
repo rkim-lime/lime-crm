@@ -5,6 +5,7 @@ import RoleGate from '../components/RoleGate';
 import LeadForm from '../components/LeadForm';
 import { useLeads, useOrphanedConversions } from '../hooks/useLeads';
 import { useProfiles } from '../hooks/useDashboard';
+import { useAuth } from '../hooks/useAuth.jsx';
 import { AssetPills, TierBadge, fmtDate, fmtRelTime, TableSkeleton, ErrorBanner } from './shared';
 
 const INDIVIDUAL_STAGES = [
@@ -72,12 +73,17 @@ export default function Leads() {
   const [stageFilter, setStage]   = useState('');
   const [ownerFilter, setOwner]   = useState('');
   const [sourceFilter, setSource] = useState('');
+  const [myOwner, setMyOwner]     = useState(false);
+
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id;
 
   const filters = {};
-  if (statusFilter) filters.status = statusFilter;
-  if (stageFilter)  filters.stage  = stageFilter;
-  if (ownerFilter)  filters.owner  = ownerFilter;
-  if (sourceFilter) filters.source = sourceFilter;
+  if (statusFilter) filters.status  = statusFilter;
+  if (stageFilter)  filters.stage   = stageFilter;
+  if (ownerFilter)  filters.owner   = ownerFilter;
+  if (sourceFilter) filters.source  = sourceFilter;
+  if (myOwner && currentUserId) filters.myOwner = currentUserId;
 
   const { data, isLoading, error, refetch } = useLeads(filters);
   const orphaned = useOrphanedConversions();
@@ -115,12 +121,18 @@ export default function Leads() {
         <select className="filter-select" value={sourceFilter} onChange={e => setSource(e.target.value)}>
           {SOURCE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select className="filter-select" value={ownerFilter} onChange={e => setOwner(e.target.value)}>
-          <option value="">All Owners</option>
+        <select className="filter-select" value={ownerFilter} onChange={e => { setOwner(e.target.value); setMyOwner(false); }}>
+          <option value="">All Sales Owners</option>
           {(profiles.data ?? []).map(p => (
             <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
           ))}
         </select>
+        <button
+          className={`btn btn-sm${myOwner ? ' btn-primary' : ' btn-secondary'}`}
+          onClick={() => { setMyOwner(v => !v); setOwner(''); }}
+        >
+          My Leads {myOwner && data ? `(${data.length})` : ''}
+        </button>
         <span style={{ flex: 1 }} />
         <button className="btn btn-secondary btn-sm" disabled title="Coming soon">Export</button>
         <RoleGate allow={['admin', 'sales', 'operations']}>
@@ -143,6 +155,7 @@ export default function Leads() {
                 <th>Source</th>
                 <th>Lead Score</th>
                 <th>Asset Classes</th>
+                <th>Sales Owner</th>
                 <th>Created</th>
               </tr>
             </thead>
@@ -172,13 +185,14 @@ export default function Leads() {
                     </td>
                     <td><ScorePill score={lead.lead_score} /></td>
                     <td><AssetPills classes={lead.asset_classes} /></td>
+                    <td><span style={{ fontSize: 13 }}>{lead.sales_owner?.full_name ?? '—'}</span></td>
                     <td style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>{fmtRelTime(lead.created_at)}</td>
                   </tr>
                 );
               })}
               {!isLoading && (data ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  <td colSpan={8} style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
                     No leads found
                   </td>
                 </tr>

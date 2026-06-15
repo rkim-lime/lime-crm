@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import SlidePanel, { PanelFooter } from './SlidePanel';
-import { FormField, FormSelect, FormPillSelect, FormPillRadio, FormTextarea, FormToggle, FormSection, FormGrid } from './Form';
+import { FormField, FormSelect, FormPillSelect, FormPillRadio, FormTextarea, FormToggle, FormSection, FormGrid, FormSearchSelect } from './Form';
 import { useCreateAccount, useUpdateAccount } from '../hooks/useAccounts';
+import { useProfiles } from '../hooks/useDashboard';
+import { useAuth } from '../hooks/useAuth.jsx';
 import RoleGate from './RoleGate';
 
 const TIER_SEGMENTS = {
@@ -43,12 +45,16 @@ const blank = {
   avg_daily_volume_usd: '', aum_usd: '', website: '', notes: '',
   kyc_status: 'not_started', aml_status: 'clear',
   accredited_investor: false, finra_member: false,
+  sales_owner_id: '', service_manager_id: '',
 };
 
 function nullify(v) { return v === '' ? null : v; }
 
 export default function AccountForm({ account, onClose, onSuccess }) {
   const isEdit = !!account;
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id ?? '';
+
   const [form, setForm] = useState(isEdit ? {
     ...blank,
     name:              account.name              ?? '',
@@ -73,7 +79,9 @@ export default function AccountForm({ account, onClose, onSuccess }) {
     aml_status:        account.aml_status        ?? 'clear',
     accredited_investor: account.accredited_investor ?? false,
     finra_member:      account.finra_member      ?? false,
-  } : blank);
+    sales_owner_id:    account.sales_owner_id    ?? '',
+    service_manager_id: account.service_manager_id ?? '',
+  } : { ...blank, sales_owner_id: currentUserId });
 
   const [errors, setErrors] = useState({});
   const set = (k) => (v) => { setForm(f => ({ ...f, [k]: v })); if (errors[k]) setErrors(e => ({ ...e, [k]: '' })); };
@@ -83,11 +91,18 @@ export default function AccountForm({ account, onClose, onSuccess }) {
   const update = useUpdateAccount();
   const saving = create.isPending || update.isPending;
 
+  const profiles = useProfiles();
+  const profileOpts = (profiles.data ?? []).map(p => ({
+    value: p.id,
+    label: p.full_name || p.email || 'Unknown',
+  }));
+
   const validate = () => {
     const e = {};
-    if (!form.name.trim()) e.name = 'Name is required';
-    if (!form.tier)        e.tier = 'Tier is required';
-    if (!form.segment)     e.segment = 'Segment is required';
+    if (!form.name.trim())      e.name           = 'Name is required';
+    if (!form.tier)             e.tier           = 'Tier is required';
+    if (!form.segment)          e.segment        = 'Segment is required';
+    if (!form.sales_owner_id)   e.sales_owner_id = 'Sales Owner is required';
     return e;
   };
 
@@ -119,6 +134,8 @@ export default function AccountForm({ account, onClose, onSuccess }) {
       accredited_investor: form.accredited_investor,
       finra_member:      form.finra_member,
       tags:              [],
+      sales_owner_id:    form.sales_owner_id || null,
+      service_manager_id: form.service_manager_id || null,
     };
     try {
       if (isEdit) {
@@ -158,6 +175,27 @@ export default function AccountForm({ account, onClose, onSuccess }) {
               options={['prospect','active','inactive','suspended','churned'].map(s => ({ value: s, label: s }))} />
             <FormField label="Jurisdiction" value={form.jurisdiction} onChange={set('jurisdiction')} placeholder="e.g. US, GB, SG" />
           </FormGrid>
+
+          <FormSection title="Ownership" />
+          <FormSearchSelect
+            label="Sales Owner"
+            options={profileOpts}
+            value={form.sales_owner_id}
+            onChange={set('sales_owner_id')}
+            error={errors.sales_owner_id}
+            placeholder="Assign sales owner…"
+            required
+          />
+          <FormSearchSelect
+            label="Service Manager"
+            options={profileOpts}
+            value={form.service_manager_id}
+            onChange={set('service_manager_id')}
+            placeholder="Assign when deal reaches Onboarding"
+          />
+          <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: -8, marginBottom: 12 }}>
+            Required before account can go Live
+          </div>
 
           <FormSection title="Legal" />
           <FormField label="Legal entity name" value={form.legal_entity_name} onChange={set('legal_entity_name')} />

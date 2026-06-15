@@ -4,6 +4,8 @@ import { FormField, FormSelect, FormPillSelect, FormPillRadio, FormTextarea, For
 import { useCreateDeal, useUpdateDeal } from '../hooks/useDeals';
 import { useAccounts } from '../hooks/useAccounts';
 import { useContacts } from '../hooks/useContacts';
+import { useProfiles } from '../hooks/useDashboard';
+import { useAuth } from '../hooks/useAuth.jsx';
 
 const INST_STAGES = [
   {value:'prospecting',label:'Prospecting'},{value:'qualified',label:'Qualified'},
@@ -38,10 +40,14 @@ const blank = {
   probability:50, asset_classes:[], order_routing:'',
   colo:false, market_data:false, hosting:false, cross_connect:false,
   notes:'', competitor:'', lost_reason:'',
+  sales_owner_id:'',
 };
 
 export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
   const isEdit = !!deal;
+  const { session } = useAuth();
+  const currentUserId = session?.user?.id ?? '';
+
   const [form, setForm] = useState(isEdit ? {
     ...blank,
     name:              deal.name              ?? '',
@@ -63,7 +69,8 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
     notes:             deal.notes             ?? '',
     competitor:        deal.competitor        ?? '',
     lost_reason:       deal.lost_reason       ?? '',
-  } : { ...blank, tier: defaultTier ?? '' });
+    sales_owner_id:    deal.sales_owner_id    ?? '',
+  } : { ...blank, tier: defaultTier ?? '', sales_owner_id: currentUserId });
 
   const [errors, setErrors] = useState({});
   const set = (k) => (v) => { setForm(f => ({ ...f, [k]: v })); if (errors[k]) setErrors(e => ({ ...e, [k]: '' })); };
@@ -75,16 +82,20 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
 
   const accounts = useAccounts({});
   const contacts = useContacts({});
+  const profiles = useProfiles();
+
   const accountOpts = (accounts.data ?? []).map(a => ({ value: a.id, label: `${a.name}${a.tier ? ` · ${a.tier}` : ''}` }));
   const contactOpts = (contacts.data ?? []).map(c => ({ value: c.id, label: `${c.first_name} ${c.last_name}` }));
+  const profileOpts = (profiles.data ?? []).map(p => ({ value: p.id, label: p.full_name || p.email || 'Unknown' }));
 
   const stages = form.tier === 'individual' ? IND_STAGES : INST_STAGES;
   const accountRequired = form.tier === 'enterprise' || form.tier === 'pro';
 
   const validate = () => {
     const e = {};
-    if (!form.name.trim()) e.name = 'Name is required';
-    if (!form.tier)        e.tier = 'Tier is required';
+    if (!form.name.trim())    e.name           = 'Name is required';
+    if (!form.tier)           e.tier           = 'Tier is required';
+    if (!form.sales_owner_id) e.sales_owner_id = 'Sales Owner is required';
     if (accountRequired && !form.account_id) e.account_id = 'Account is required for Enterprise and Pro deals';
     return e;
   };
@@ -113,6 +124,7 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
       notes:             form.notes      || null,
       competitor:        form.competitor || null,
       lost_reason:       form.lost_reason || null,
+      sales_owner_id:    form.sales_owner_id || null,
     };
     try {
       if (isEdit) {
@@ -149,6 +161,17 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
             <FormSelect label="Motion" value={form.motion} onChange={set('motion')} options={MOTIONS} />
             <FormField label="Probability (%)" type="number" value={form.probability} onChange={v => set('probability')(Number(v))} />
           </FormGrid>
+
+          <FormSection title="Ownership" />
+          <FormSearchSelect
+            label="Sales Owner"
+            options={profileOpts}
+            value={form.sales_owner_id}
+            onChange={set('sales_owner_id')}
+            error={errors.sales_owner_id}
+            placeholder="Assign sales owner…"
+            required
+          />
 
           <FormSection title="Links" />
           <FormSearchSelect

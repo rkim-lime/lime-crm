@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import SlidePanel, { PanelFooter } from './SlidePanel';
-import { FormField, FormSelect, FormMultiSelect, FormTextarea, FormToggle, FormSlider, FormTagInput, FormSection, FormGrid } from './Form';
+import { FormField, FormSelect, FormMultiSelect, FormTextarea, FormToggle, FormSlider, FormTagInput, FormSection, FormGrid, FormSearchSelect } from './Form';
 import { useCreateContact, useUpdateContact } from '../hooks/useContacts';
+import { useProfiles } from '../hooks/useDashboard';
 import RoleGate from './RoleGate';
 
 const TIER_SEGMENTS = {
@@ -26,6 +27,7 @@ const blank = {
   asset_classes:[], order_routing:[], uses_fix:false, uses_rest_api:false,
   programming_languages:[], source:'', notes:'',
   kyc_status:'', aml_status:'', accredited_investor:false, finra_registered:false, finra_crd:'',
+  sales_owner_id:'',
 };
 
 export default function ContactForm({ contact, onClose, onSuccess }) {
@@ -56,6 +58,7 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
     accredited_investor:   contact.accredited_investor   ?? false,
     finra_registered:      contact.finra_registered      ?? false,
     finra_crd:             contact.finra_crd             ?? '',
+    sales_owner_id:        contact.sales_owner_id        ?? '',
   } : blank);
 
   const [errors, setErrors] = useState({});
@@ -65,6 +68,12 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
   const create = useCreateContact();
   const update = useUpdateContact();
   const saving = create.isPending || update.isPending;
+
+  const profiles = useProfiles();
+  const profileOpts = (profiles.data ?? []).map(p => ({
+    value: p.id,
+    label: p.full_name || p.email || 'Unknown',
+  }));
 
   const validate = () => {
     const e = {};
@@ -78,10 +87,11 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
     const errs = validate();
     if (Object.keys(errs).length) { setErrors(errs); return; }
     try {
+      const payload = { ...form, sales_owner_id: form.sales_owner_id || null };
       if (isEdit) {
-        await update.mutateAsync({ id: contact.id, ...form });
+        await update.mutateAsync({ id: contact.id, ...payload });
       } else {
-        await create.mutateAsync(form);
+        await create.mutateAsync(payload);
       }
       onSuccess?.();
       onClose();
@@ -128,6 +138,15 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
             <FormSelect label="Source" value={form.source} onChange={set('source')} options={SOURCES} />
           </FormGrid>
           <FormSlider label="Lead score" value={form.lead_score} onChange={set('lead_score')} />
+
+          <FormSection title="Ownership" />
+          <FormSearchSelect
+            label="Sales Owner"
+            options={profileOpts}
+            value={form.sales_owner_id}
+            onChange={set('sales_owner_id')}
+            placeholder="Assign sales owner…"
+          />
 
           <FormSection title="Trading profile" />
           <FormMultiSelect label="Asset classes" options={ASSET_CLASSES} value={form.asset_classes} onChange={set('asset_classes')} />

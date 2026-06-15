@@ -46,4 +46,4 @@ Individual stages: IND_STAGES in Playbook.jsx
 Flow nodes: EnterpriseFlow, ProFlow, IndividualFlow in Playbook.jsx
 
 ## Last updated
-2026-06-12 — Initial version matching v0.1 schema
+2026-06-15 — Sales Owner / Service Manager / Deal Team added; onboarding requires Service Manager before Live

@@ -69,15 +69,15 @@ const ENT_STAGES = [
     key: 'onboarding',
     label: 'Onboarding',
     what: 'Technical and operational setup.',
-    actions: ['FIX connectivity testing', 'MPID activation', 'Colocation provisioning', 'User training'],
-    fields: ['MPID', 'Colo details', 'Go-live date'],
+    actions: ['FIX connectivity testing', 'MPID activation', 'Colocation provisioning', 'User training', 'Assign Service Manager to the account'],
+    fields: ['MPID', 'Colo details', 'Go-live date', 'Service Manager (required before Live)'],
     moveWhen: 'First successful test trade',
     quickAction: { label: '→ Accounts', path: '/accounts' },
   },
   {
     key: 'live',
     label: 'Live',
-    what: 'Client is live and trading.',
+    what: 'Client is live and trading. Service Manager owns the ongoing relationship.',
     actions: ['Monitor ADV', 'Check in regularly', 'Log all touchpoints', 'Watch for expansion opportunities'],
     fields: ['Account health score', 'ADV vs expected'],
     moveWhen: 'N/A — ongoing',
@@ -555,7 +555,7 @@ function EnterpriseFlow() {
 
       <ProcessNode
         title="Create Deal"
-        fields={['Deal name', 'Stage: Prospecting', 'Asset classes', 'Infrastructure requirements', 'Close date', 'Probability']}
+        fields={['Deal name', 'Stage: Prospecting', 'Asset classes', 'Infrastructure requirements', 'Close date', 'Probability', 'Sales Owner (required)', 'Deal Team (optional)']}
         action="→ New Deal"
         actionPath="/deals"
         tierColor={tc}
@@ -623,7 +623,7 @@ function ProFlow() {
 
       <ProcessNode
         title="Create Deal"
-        fields={['Deal name', 'Stage: Prospecting', 'Asset classes', 'Infrastructure', 'Close date']}
+        fields={['Deal name', 'Stage: Prospecting', 'Asset classes', 'Infrastructure', 'Close date', 'Sales Owner (required)', 'Deal Team (optional)']}
         action="→ New Deal"
         actionPath="/deals"
         tierColor={tc}

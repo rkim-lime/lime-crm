@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
-const FIELDS = 'id,first_name,last_name,email,phone,title,segment,tier,status,lead_score,jurisdiction,kyc_status,aml_status,asset_classes,order_routing,uses_fix,uses_rest_api,source,notes,owner_id,created_at';
+const FIELDS = 'id,first_name,last_name,email,phone,title,segment,tier,status,lead_score,jurisdiction,kyc_status,aml_status,asset_classes,order_routing,uses_fix,uses_rest_api,source,notes,sales_owner_id,created_at,sales_owner:sales_owner_id(id,full_name,email,avatar_url)';
 
 async function logActivity(payload) {
   try {
