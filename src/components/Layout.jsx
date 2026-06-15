@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { usePendingUsers } from '../hooks/usePendingUsers';
+import { useOwnershipHygieneCount } from '../hooks/useOwnershipHygiene';
 
 const STATIC_NAV_SECTIONS = [
   {
@@ -36,15 +37,6 @@ const STATIC_NAV_SECTIONS = [
       { to: '/documents', label: 'Documents',     icon: '◻' },
     ],
   },
-  {
-    label: 'Reports',
-    items: [
-      { to: '/analytics',            label: 'Analytics',    icon: '▲' },
-      { to: '/reports',              label: 'Reports',      icon: '☰' },
-      { to: '/funnel',               label: 'Funnels',      icon: '⬇' },
-      { to: '/reports/lead-hygiene', label: 'Lead Hygiene', icon: '◍' },
-    ],
-  },
 ];
 
 const BASE_SETTINGS_ITEMS = [
@@ -76,6 +68,8 @@ export default function Layout({ title, children }) {
   const { pathname } = useLocation();
   const { count: pendingCount } = usePendingUsers();
   const isAdmin = role === 'admin';
+  const hygiene = useOwnershipHygieneCount();
+  const hygieneCount = hygiene.data ?? 0;
 
   const [dismissedCount, setDismissedCount] = useState(
     () => parseInt(localStorage.getItem('lime_pending_dismissed') ?? '0', 10)
@@ -121,6 +115,39 @@ export default function Layout({ title, children }) {
               ))}
             </div>
           ))}
+
+          {/* Reports section (dynamic — needs hygiene count) */}
+          <div>
+            <div className="sidebar-section-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              Reports
+              {hygieneCount > 0 && (
+                <span style={{ background: 'var(--red)', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '1px 5px', lineHeight: '14px' }}>
+                  {hygieneCount}
+                </span>
+              )}
+            </div>
+            {[
+              { to: '/analytics',              label: 'Analytics',    icon: '▲' },
+              { to: '/reports',                label: 'Reports',      icon: '☰' },
+              { to: '/funnel',                 label: 'Funnels',      icon: '⬇' },
+              { to: '/reports/lead-hygiene',   label: 'Lead Hygiene', icon: '◍' },
+              { to: '/reports/ownership',      label: 'Ownership',    icon: '◑' },
+            ].map(({ to, label, icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
+              >
+                <Icon ch={icon} />
+                {label}
+                {label === 'Ownership' && hygieneCount > 0 && (
+                  <span style={{ marginLeft: 'auto', background: 'var(--red)', color: '#fff', borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '0px 5px', lineHeight: '16px' }}>
+                    {hygieneCount}
+                  </span>
+                )}
+              </NavLink>
+            ))}
+          </div>
 
           {/* Settings section (dynamic) */}
           <div>

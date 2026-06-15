@@ -376,8 +376,11 @@ function KanbanCard({ item, isIndividual, isAdmin, onEdit, onConvert, onPromote,
       )}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
         <span>
-          {!isIndividual && ['onboarding','live'].includes(item.stage) && !item.account?.service_manager_id && (
-            <span title="Account needs a Service Manager" style={{ fontSize: 13, color: '#d97706' }}>⚠</span>
+          {(
+            !item.sales_owner_id ||
+            (!isIndividual && ['onboarding','live'].includes(item.stage) && !item.account?.service_manager_id)
+          ) && (
+            <span title="Ownership issue — see hygiene report" style={{ fontSize: 13, color: '#d97706' }}>⚠</span>
           )}
         </span>
         {item.sales_owner?.full_name && (

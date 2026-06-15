@@ -22,7 +22,8 @@ import Documents     from './pages/Documents';
 import Analytics     from './pages/Analytics';
 import Reports       from './pages/Reports';
 import Integrations  from './pages/Integrations';
-import LeadHygiene   from './pages/reports/LeadHygiene';
+import LeadHygiene        from './pages/reports/LeadHygiene';
+import OwnershipHygiene   from './pages/reports/OwnershipHygiene';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
 import AcceptInvite  from './pages/AcceptInvite';
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="/leads/:id"        element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
             <Route path="/funnel"           element={<ProtectedRoute><Funnel /></ProtectedRoute>} />
             <Route path="/reports/lead-hygiene" element={<ProtectedRoute><LeadHygiene /></ProtectedRoute>} />
+            <Route path="/reports/ownership"    element={<ProtectedRoute><OwnershipHygiene /></ProtectedRoute>} />
             <Route path="/tasks"            element={<ProtectedRoute><Tasks /></ProtectedRoute>} />
             <Route path="/activity"         element={<ProtectedRoute><Activity /></ProtectedRoute>} />
             <Route path="/documents"        element={<ProtectedRoute><Documents /></ProtectedRoute>} />

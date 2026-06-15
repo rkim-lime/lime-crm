@@ -9,6 +9,7 @@ import TaskForm from '../components/TaskForm';
 import LogActivityModal from '../components/LogActivityModal';
 import DocumentUpload from '../components/DocumentUpload';
 import AssignServiceManagerModal from '../components/AssignServiceManagerModal';
+import AssignOwnerModal from '../components/AssignOwnerModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccount, useAccountContacts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
 import { useDeals } from '../hooks/useDeals';
@@ -35,7 +36,8 @@ export default function AccountDetail() {
   const [taskOpen, setTaskOpen]     = useState(false);
   const [activityOpen, setActivity] = useState(false);
   const [confirm, setConfirm]       = useState(null); // { type: 'delete'|'archive' }
-  const [assignSmOpen, setAssignSmOpen] = useState(false);
+  const [assignSmOpen, setAssignSmOpen]   = useState(false);
+  const [assignSoOpen, setAssignSoOpen]   = useState(false);
   const isAdmin = useIsAdmin();
 
   const account    = useAccount(id);
@@ -99,6 +101,20 @@ export default function AccountDetail() {
           ]} />
         )}
       </div>
+
+      {/* Ownership warnings */}
+      {!a.sales_owner_id && (
+        <div style={{ marginBottom: 12, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ No Sales Owner assigned</span>
+          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setAssignSoOpen(true)}>Assign Now</button>
+        </div>
+      )}
+      {!a.service_manager_id && ['active', 'onboarding'].includes(a.status) && (
+        <div style={{ marginBottom: 12, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ This account needs a Service Manager assigned — required for active and onboarding accounts</span>
+          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto', whiteSpace: 'nowrap' }} onClick={() => setAssignSmOpen(true)}>Assign Now</button>
+        </div>
+      )}
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 2, marginBottom: 20, borderBottom: '1px solid var(--border-subtle)' }}>
@@ -250,6 +266,16 @@ export default function AccountDetail() {
 
       {editOpen     && <AccountForm account={a} onClose={() => setEditOpen(false)} onSuccess={() => setEditOpen(false)} />}
       {assignSmOpen && <AssignServiceManagerModal account={a} onClose={() => setAssignSmOpen(false)} />}
+      {assignSoOpen && (
+        <AssignOwnerModal
+          recordType="account"
+          recordId={a.id}
+          fieldName="sales_owner_id"
+          title={`Assign Sales Owner — ${a.name}`}
+          currentOwnerId={a.sales_owner_id}
+          onClose={() => setAssignSoOpen(false)}
+        />
+      )}
       {taskOpen     && <TaskForm defaults={{ account_id: id }} onClose={() => setTaskOpen(false)} />}
       {activityOpen && <LogActivityModal defaults={{ account_id: id }} onClose={() => setActivity(false)} onSuccess={() => setActivity(false)} />}
 

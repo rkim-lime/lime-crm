@@ -113,30 +113,7 @@ UPDATE public.leads
 SET sales_owner_id = (SELECT id FROM public.profiles WHERE role = 'admin' LIMIT 1)
 WHERE sales_owner_id IS NULL;
 
--- 8. Trigger: require service manager before deal goes live
-CREATE OR REPLACE FUNCTION public.check_service_manager()
-RETURNS trigger AS $$
-BEGIN
-  IF NEW.stage = 'live' AND OLD.stage != 'live' THEN
-    IF EXISTS (
-      SELECT 1 FROM public.accounts
-      WHERE id = NEW.account_id AND service_manager_id IS NULL
-    ) THEN
-      RAISE EXCEPTION
-        'Account must have a Service Manager assigned before deal can go Live. '
-        'Please assign a Service Manager to the account first.';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS enforce_service_manager ON public.deals;
-CREATE TRIGGER enforce_service_manager
-  BEFORE UPDATE ON public.deals
-  FOR EACH ROW EXECUTE PROCEDURE public.check_service_manager();
-
--- 9. Confirmation query
+-- 8. Confirmation query
 SELECT
   (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'sales_owner_id')    AS acct_sales_owner,
   (SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'accounts' AND column_name = 'service_manager_id') AS acct_svc_mgr,

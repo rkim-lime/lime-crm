@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
 import ActionMenu from '../components/ActionMenu';
@@ -13,6 +13,7 @@ import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 import DealTeamPanel from '../components/DealTeamPanel';
+import AssignOwnerModal from '../components/AssignOwnerModal';
 import {
   TierBadge, StageBadge, AssetPills, KycBadge, ActivityIcon,
   fmtCurrency, fmtDate, fmtRelTime, ErrorBanner,
@@ -53,6 +54,7 @@ export default function DealDetail() {
   const [activityOpen, setActivity] = useState(false);
   const [taskOpen, setTaskOpen]     = useState(false);
   const [confirm, setConfirm]       = useState(null);
+  const [assignSoOpen, setAssignSoOpen] = useState(false);
 
   const deal       = useDeal(id);
   const tasks      = useTasks({ account: deal.data?.account_id });
@@ -100,14 +102,20 @@ export default function DealDetail() {
   const openTasks = tasks.data?.filter(t => t.status !== 'completed') ?? [];
 
   const needsServiceManager = ['onboarding', 'live'].includes(d.stage) && d.account?.id && !d.account?.service_manager_id;
+  const needsSalesOwner = !d.sales_owner_id;
 
   return (
     <Layout title={d.name}>
+      {needsSalesOwner && (
+        <div style={{ marginBottom: 10, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ No Sales Owner assigned to this deal</span>
+          <button className="btn btn-secondary btn-sm" style={{ marginLeft: 'auto' }} onClick={() => setAssignSoOpen(true)}>Assign Now</button>
+        </div>
+      )}
       {needsServiceManager && (
-        <div style={{ marginBottom: 16, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
-          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ This account needs a Service Manager before going Live</span>
-          <span style={{ color: 'var(--text-tertiary)' }}>—</span>
-          <a href={`/accounts/${d.account.id}`} style={{ color: 'var(--accent)', fontWeight: 500 }}>Go to Account →</a>
+        <div style={{ marginBottom: 10, padding: '10px 16px', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, fontSize: 13 }}>
+          <span style={{ color: '#d97706', fontWeight: 600 }}>⚠ Account needs a Service Manager before going Live</span>
+          <a href={`/accounts/${d.account.id}`} style={{ color: 'var(--accent)', fontWeight: 500, marginLeft: 'auto', whiteSpace: 'nowrap' }}>Assign on Account →</a>
         </div>
       )}
       {/* Header */}
@@ -268,6 +276,16 @@ export default function DealDetail() {
       </div>
 
       {editOpen     && <DealForm deal={d} onClose={() => setEditOpen(false)} onSuccess={() => setEditOpen(false)} />}
+      {assignSoOpen && (
+        <AssignOwnerModal
+          recordType="deal"
+          recordId={d.id}
+          fieldName="sales_owner_id"
+          title={`Assign Sales Owner — ${d.name}`}
+          currentOwnerId={d.sales_owner_id}
+          onClose={() => setAssignSoOpen(false)}
+        />
+      )}
       {taskOpen     && <TaskForm defaults={{ account_id: d.account_id }} onClose={() => setTaskOpen(false)} />}
       {activityOpen && <LogActivityModal defaults={{ account_id: d.account_id }} onClose={() => setActivity(false)} onSuccess={() => setActivity(false)} />}
 
