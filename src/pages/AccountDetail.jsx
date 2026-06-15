@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
 import AccountForm from '../components/AccountForm';
+import DealForm from '../components/DealForm';
 import ActionMenu from '../components/ActionMenu';
 import ConfirmModal from '../components/ConfirmModal';
 import TaskForm from '../components/TaskForm';
@@ -15,7 +16,7 @@ import { useAccount, useAccountContacts, useDeleteAccount, useArchiveAccount } f
 import { useDeals } from '../hooks/useDeals';
 import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner, StrategyAssetPills, StrategyAssetPill, UpsellGapPills } from './shared';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
 const TABS = ['Overview', 'Documents'];
@@ -35,9 +36,10 @@ export default function AccountDetail() {
   const [editOpen, setEditOpen]     = useState(false);
   const [taskOpen, setTaskOpen]     = useState(false);
   const [activityOpen, setActivity] = useState(false);
-  const [confirm, setConfirm]       = useState(null); // { type: 'delete'|'archive' }
-  const [assignSmOpen, setAssignSmOpen]   = useState(false);
-  const [assignSoOpen, setAssignSoOpen]   = useState(false);
+  const [confirm, setConfirm]       = useState(null);
+  const [assignSmOpen, setAssignSmOpen] = useState(false);
+  const [assignSoOpen, setAssignSoOpen] = useState(false);
+  const [dealFormOpen, setDealFormOpen] = useState(false);
   const isAdmin = useIsAdmin();
 
   const account    = useAccount(id);
@@ -48,7 +50,6 @@ export default function AccountDetail() {
   const tasks      = useTasks({ account: id });
   const activities = useActivities({ account: id });
 
-  // All hooks must be called before any conditional return
   const hasOverdueTasks = useMemo(() =>
     (tasks.data ?? []).some(
       t => t.status !== 'completed' && t.due_date && new Date(t.due_date) < new Date()
@@ -143,7 +144,47 @@ export default function AccountDetail() {
               <Field label="ADV (USD)"      value={a.avg_daily_volume_usd ? `$${(a.avg_daily_volume_usd/1e6).toFixed(0)}M` : null} />
               <Field label="AUM (USD)"      value={a.aum_usd ? `$${(a.aum_usd/1e9).toFixed(2)}B` : null} />
               <Field label="Website"        value={a.website} link />
-              <Field label="Asset classes"><AssetPills classes={a.asset_classes} /></Field>
+
+              {/* Asset Classes & Coverage card */}
+              <div style={{ background: 'var(--bg-secondary, #f8f9fa)', borderRadius: '8px', padding: '14px', marginBottom: '12px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '500', textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--text-tertiary)', marginBottom: '12px' }}>
+                  Asset Classes & Coverage
+                </div>
+
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Trades</div>
+                  <StrategyAssetPills classes={a.strategy_asset_classes} />
+                </div>
+
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Contracted with Us</div>
+                  {a.sold_asset_classes?.length > 0
+                    ? a.sold_asset_classes.map(c => <StrategyAssetPill key={c} value={c} />)
+                    : <span style={{ color: 'var(--text-tertiary)', fontSize: '12px' }}>None contracted yet</span>
+                  }
+                </div>
+
+                {(() => {
+                  const gap = (a.strategy_asset_classes || []).filter(c =>
+                    ['equities','options','futures'].includes(c) &&
+                    !(a.sold_asset_classes || []).includes(c)
+                  );
+                  if (gap.length === 0) return null;
+                  return (
+                    <div style={{ background: '#FAEEDA', borderRadius: '6px', padding: '8px 10px', marginTop: '8px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '4px' }}>Upsell Opportunity</div>
+                      <UpsellGapPills strategyClasses={a.strategy_asset_classes} soldClasses={a.sold_asset_classes} />
+                      <button
+                        onClick={() => setDealFormOpen(true)}
+                        style={{ marginTop: '8px', fontSize: '11px', color: '#854F0B', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', padding: 0 }}
+                      >
+                        + Create Upsell Deal →
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <Field label="Sales Owner">
                 {a.sales_owner
                   ? <span style={{ fontWeight: 500 }}>{a.sales_owner.full_name || a.sales_owner.email}</span>
@@ -180,7 +221,6 @@ export default function AccountDetail() {
               <Field label="FINRA member"        value={a.finra_member ? 'Yes' : 'No'} />
             </div>
 
-            {/* Account health score — enterprise only */}
             {a.tier === 'enterprise' && (
               <>
                 <ScoreCard scoreType="account_health" record={a} extraParams={scoreExtraParams} />
@@ -265,6 +305,7 @@ export default function AccountDetail() {
       )}
 
       {editOpen     && <AccountForm account={a} onClose={() => setEditOpen(false)} onSuccess={() => setEditOpen(false)} />}
+      {dealFormOpen && <DealForm defaultTier={a.tier} onClose={() => setDealFormOpen(false)} onSuccess={() => setDealFormOpen(false)} />}
       {assignSmOpen && <AssignServiceManagerModal account={a} onClose={() => setAssignSmOpen(false)} />}
       {assignSoOpen && (
         <AssignOwnerModal

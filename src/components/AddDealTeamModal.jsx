@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Modal, { ModalFooter } from './Modal';
+import Modal from './Modal';
 import { FormSearchSelect, FormSelect } from './Form';
 import { useProfiles } from '../hooks/useDashboard';
 import { useAddDealTeamMember } from '../hooks/useDealTeam';
@@ -39,7 +39,19 @@ export default function AddDealTeamModal({ dealId, existingMemberIds = [], onClo
   };
 
   return (
-    <Modal title="Add Team Member" onClose={onClose} width={440}>
+    <Modal
+      title="Add Team Member"
+      onClose={onClose}
+      width={440}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose} disabled={addMember.isPending}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleAdd} disabled={addMember.isPending}>
+            {addMember.isPending ? 'Adding…' : 'Add Member'}
+          </button>
+        </>
+      }
+    >
       {error && (
         <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 13, color: '#dc2626' }}>
           {error}
@@ -58,12 +70,6 @@ export default function AddDealTeamModal({ dealId, existingMemberIds = [], onClo
         value={role}
         onChange={setRole}
       />
-      <ModalFooter>
-        <button className="btn btn-secondary" onClick={onClose} disabled={addMember.isPending}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleAdd} disabled={addMember.isPending}>
-          {addMember.isPending ? 'Adding…' : 'Add Member'}
-        </button>
-      </ModalFooter>
     </Modal>
   );
 }

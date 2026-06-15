@@ -41,14 +41,14 @@ export default function ConfirmModal({
               {message}
             </p>
           )}
-          <div className="modal-footer">
-            <button className="btn btn-secondary" onClick={onCancel} disabled={loading}>
-              Cancel
-            </button>
-            <button className={`btn ${btnClass}`} onClick={onConfirm} disabled={loading}>
-              {loading ? 'Processing…' : confirmLabel}
-            </button>
-          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onCancel} disabled={loading}>
+            Cancel
+          </button>
+          <button className={`btn ${btnClass}`} onClick={onConfirm} disabled={loading}>
+            {loading ? 'Processing…' : confirmLabel}
+          </button>
         </div>
       </div>
     </div>,

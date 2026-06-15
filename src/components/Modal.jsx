@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function Modal({ title, onClose, children, width = 480 }) {
+export default function Modal({ title, onClose, children, footer, width = 480 }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -16,6 +16,7 @@ export default function Modal({ title, onClose, children, width = 480 }) {
           <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div className="modal-body">{children}</div>
+        {footer && <div className="modal-footer">{footer}</div>}
       </div>
     </div>,
     document.body
@@ -26,17 +27,24 @@ export function ModalFooter({ children }) {
   return <div className="modal-footer">{children}</div>;
 }
 
-export function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm, onClose, loading = false, children }) {
+export function ConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, confirmVariant, onConfirm, onClose, loading = false, children }) {
+  const variant = confirmVariant ?? (danger ? 'btn-danger' : 'btn-primary');
   return (
-    <Modal title={title} onClose={onClose} width={420}>
+    <Modal
+      title={title}
+      onClose={onClose}
+      width={420}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
+          <button className={`btn ${variant}`} onClick={onConfirm} disabled={loading}>
+            {loading ? 'Processing…' : confirmLabel}
+          </button>
+        </>
+      }
+    >
       {message && <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: children ? 16 : 0 }}>{message}</p>}
       {children}
-      <ModalFooter>
-        <button className="btn btn-secondary" onClick={onClose} disabled={loading}>Cancel</button>
-        <button className={`btn ${danger ? 'btn-danger' : 'btn-primary'}`} onClick={onConfirm} disabled={loading}>
-          {loading ? 'Processing…' : confirmLabel}
-        </button>
-      </ModalFooter>
     </Modal>
   );
 }

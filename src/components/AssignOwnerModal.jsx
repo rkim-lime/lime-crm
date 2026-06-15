@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Modal, { ModalFooter } from './Modal';
+import Modal from './Modal';
 import { FormSearchSelect } from './Form';
 import { useProfiles } from '../hooks/useDashboard';
 import { useUpdateAccount } from '../hooks/useAccounts';
@@ -48,7 +48,19 @@ export default function AssignOwnerModal({
   };
 
   return (
-    <Modal title={title} onClose={onClose} width={420}>
+    <Modal
+      title={title}
+      onClose={onClose}
+      width={420}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose} disabled={update.isPending}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? 'Saving…' : 'Assign'}
+          </button>
+        </>
+      }
+    >
       {error && (
         <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 13, color: '#dc2626' }}>
           {error}
@@ -61,12 +73,6 @@ export default function AssignOwnerModal({
         onChange={setSelectedId}
         placeholder="Search team members…"
       />
-      <ModalFooter>
-        <button className="btn btn-secondary" onClick={onClose} disabled={update.isPending}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={update.isPending}>
-          {update.isPending ? 'Saving…' : 'Assign'}
-        </button>
-      </ModalFooter>
     </Modal>
   );
 }

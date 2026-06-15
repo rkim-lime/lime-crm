@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import Modal, { ModalFooter } from './Modal';
+import Modal from './Modal';
 import { FormField, FormTextarea, FormSearchSelect, FormGrid } from './Form';
 import { useCreateActivity } from '../hooks/useActivities';
 import { useAccounts } from '../hooks/useAccounts';
@@ -63,11 +63,22 @@ export default function LogActivityModal({ defaults = {}, onClose, onSuccess }) 
   };
 
   return (
-    <Modal title="Log Activity" onClose={onClose} width={520}>
-      <form onSubmit={submit}>
+    <Modal
+      title="Log Activity"
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" form="activity-form" className="btn btn-primary" disabled={create.isPending}>
+            {create.isPending ? 'Logging…' : 'Log activity'}
+          </button>
+        </>
+      }
+    >
+      <form id="activity-form" onSubmit={submit}>
         {errors._global && <div className="form-error" style={{ marginBottom: 12 }}>{errors._global}</div>}
 
-        {/* Type radio pills */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           {TYPES.map(t => (
             <button
@@ -90,13 +101,6 @@ export default function LogActivityModal({ defaults = {}, onClose, onSuccess }) 
           <FormSearchSelect label="Contact" options={contactOpts} value={form.contact_id} onChange={set('contact_id')} />
           <FormSearchSelect label="Deal"    options={dealOpts}    value={form.deal_id}    onChange={set('deal_id')} />
         </div>
-
-        <ModalFooter>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={create.isPending}>
-            {create.isPending ? 'Logging…' : 'Log activity'}
-          </button>
-        </ModalFooter>
       </form>
     </Modal>
   );

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import SlidePanel, { PanelFooter } from './SlidePanel';
+import SlidePanel from './SlidePanel';
 import {
   FormField, FormSelect, FormPillSelect, FormTextarea,
   FormToggle, FormSlider, FormSearchSelect, FormSection,
@@ -174,9 +174,20 @@ export default function LeadForm({ lead, defaultContactId, onClose, onSuccess })
   };
 
   return (
-    <SlidePanel title={isEdit ? 'Edit Lead' : 'New Lead'} onClose={onClose}>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        <div style={{ padding: '20px 24px', flex: 1 }}>
+    <SlidePanel
+      title={isEdit ? 'Edit Lead' : 'New Lead'}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" form="lead-form" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create lead'}
+          </button>
+        </>
+      }
+    >
+      <form id="lead-form" onSubmit={submit}>
+        <div style={{ padding: '20px 24px' }}>
           {errors._global && (
             <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 13, color: '#dc2626' }}>
               {errors._global}
@@ -294,12 +305,6 @@ export default function LeadForm({ lead, defaultContactId, onClose, onSuccess })
           <FormTagInput label="Tags" value={form.tags} onChange={set('tags')} placeholder="tag1, tag2, …" />
         </div>
 
-        <PanelFooter>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create lead'}
-          </button>
-        </PanelFooter>
       </form>
     </SlidePanel>
   );

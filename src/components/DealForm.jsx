@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import SlidePanel, { PanelFooter } from './SlidePanel';
+import SlidePanel from './SlidePanel';
 import { FormField, FormSelect, FormPillSelect, FormPillRadio, FormTextarea, FormToggle, FormSlider, FormSearchSelect, FormSection, FormGrid } from './Form';
 import { useCreateDeal, useUpdateDeal } from '../hooks/useDeals';
 import { useAccounts } from '../hooks/useAccounts';
@@ -140,9 +140,20 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
   };
 
   return (
-    <SlidePanel title={isEdit ? 'Edit Deal' : 'New Deal'} onClose={onClose}>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        <div style={{ padding: '20px 24px', flex: 1 }}>
+    <SlidePanel
+      title={isEdit ? 'Edit Deal' : 'New Deal'}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" form="deal-form" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create deal'}
+          </button>
+        </>
+      }
+    >
+      <form id="deal-form" onSubmit={submit}>
+        <div style={{ padding: '20px 24px' }}>
           {errors._global && (
             <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 13, color: '#dc2626' }}>
               {errors._global}
@@ -213,12 +224,6 @@ export default function DealForm({ deal, defaultTier, onClose, onSuccess }) {
           <FormTextarea label="Notes" value={form.notes} onChange={set('notes')} rows={3} />
         </div>
 
-        <PanelFooter>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create deal'}
-          </button>
-        </PanelFooter>
       </form>
     </SlidePanel>
   );

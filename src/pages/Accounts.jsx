@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccounts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
 import { useAuth } from '../hooks/useAuth.jsx';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StrategyAssetPill, UpsellGapPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const TIER_SEGMENTS = {
   enterprise: ['hft_firm','hedge_fund','quant_fund','broker_dealer','family_office','prime_broker'],
@@ -23,14 +23,17 @@ const SEG_LABELS = {
   prop_trader:'Prop Trader', quant_developer:'Quant Dev', algo_trader:'Algo Trader', retail_trader:'Retail',
 };
 
+const UPSELL_CLASSES = ['equities', 'options', 'futures'];
+
 export default function Accounts() {
   const [search, setSearch]   = useState('');
   const [tier, setTier]       = useState('');
   const [segment, setSegment] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [myOwner, setMyOwner] = useState(false);
+  const [hasUpsell, setHasUpsell] = useState(false);
   const [panel, setPanel]     = useState(null);
-  const [confirm, setConfirm] = useState(null); // { type: 'delete'|'archive', account }
+  const [confirm, setConfirm] = useState(null);
   const navigate  = useNavigate();
   const isAdmin   = useIsAdmin();
   const { session } = useAuth();
@@ -40,9 +43,18 @@ export default function Accounts() {
   const handleTierChange = (t) => { setTier(t); if (t && segment && !TIER_SEGMENTS[t]?.includes(segment)) setSegment(''); };
 
   const myOwnerFilter = myOwner ? currentUserId : undefined;
-  const { data, isLoading, error, refetch } = useAccounts({ search, tier, segment, status: statusFilter, myOwner: myOwnerFilter });
+  const { data: rawData, isLoading, error, refetch } = useAccounts({ search, tier, segment, status: statusFilter, myOwner: myOwnerFilter });
   const deleteAccount  = useDeleteAccount();
   const archiveAccount = useArchiveAccount();
+
+  const data = hasUpsell
+    ? rawData?.filter(a => {
+        const gap = (a.strategy_asset_classes || []).filter(c =>
+          UPSELL_CLASSES.includes(c) && !(a.sold_asset_classes || []).includes(c)
+        );
+        return gap.length > 0;
+      })
+    : rawData;
 
   const handleConfirm = async () => {
     if (!confirm) return;
@@ -54,7 +66,6 @@ export default function Accounts() {
       }
       setConfirm(null);
     } catch (err) {
-      // mutation error displayed inline in modal via loading state; rethrow to surface it
       setConfirm(c => c ? { ...c, error: err.message } : null);
     }
   };
@@ -89,7 +100,13 @@ export default function Accounts() {
           className={`btn btn-sm${myOwner ? ' btn-primary' : ' btn-secondary'}`}
           onClick={() => setMyOwner(v => !v)}
         >
-          My Accounts {myOwner && data ? `(${data.length})` : ''}
+          My Accounts {myOwner && rawData ? `(${rawData.length})` : ''}
+        </button>
+        <button
+          className={`btn btn-sm${hasUpsell ? ' btn-primary' : ' btn-secondary'}`}
+          onClick={() => setHasUpsell(v => !v)}
+        >
+          💡 Upsell Only {hasUpsell && data ? `(${data.length})` : ''}
         </button>
         <span style={{ flex: 1 }} />
         <RoleGate allow={['admin','sales','operations']}>
@@ -105,7 +122,7 @@ export default function Accounts() {
             <thead>
               <tr>
                 <th>Account</th><th>Tier</th><th>Segment</th><th>Status</th>
-                <th>Asset classes</th><th>KYC</th><th>ADV</th>
+                <th>Asset Coverage</th><th>KYC</th><th>ADV</th>
                 <th>Sales Owner</th><th>Service Manager</th>
                 <th style={{ width: 48 }} />
               </tr>
@@ -125,7 +142,17 @@ export default function Accounts() {
                   <td><TierBadge tier={a.tier} /></td>
                   <td><SegmentBadge segment={a.segment} /></td>
                   <td><StatusBadge status={a.status} /></td>
-                  <td><AssetPills classes={a.asset_classes} /></td>
+                  <td>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                      {(a.sold_asset_classes || []).map(c => (
+                        <StrategyAssetPill key={c} value={c} />
+                      ))}
+                      <UpsellGapPills
+                        strategyClasses={a.strategy_asset_classes}
+                        soldClasses={a.sold_asset_classes}
+                      />
+                    </div>
+                  </td>
                   <td><KycBadge status={a.kyc_status} /></td>
                   <td>{a.avg_daily_volume_usd ? <span style={{ fontSize:13 }}>${(a.avg_daily_volume_usd/1_000_000).toFixed(0)}M</span> : <span className="text-tertiary">—</span>}</td>
                   <td><span style={{ fontSize: 13 }}>{a.sales_owner?.full_name ?? '—'}</span></td>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Modal, { ModalFooter } from './Modal';
+import Modal from './Modal';
 import { FormField, FormSelect, FormTextarea, FormSearchSelect, FormGrid, FormSection } from './Form';
 import { useCreateTask, useUpdateTask } from '../hooks/useTasks';
 import { useAccounts } from '../hooks/useAccounts';
@@ -60,8 +60,20 @@ export default function TaskForm({ task, defaults = {}, onClose, onSuccess }) {
   };
 
   return (
-    <Modal title={isEdit ? 'Edit Task' : 'New Task'} onClose={onClose} width={520}>
-      <form onSubmit={submit}>
+    <Modal
+      title={isEdit ? 'Edit Task' : 'New Task'}
+      onClose={onClose}
+      width={520}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" form="task-form" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save' : 'Create task'}
+          </button>
+        </>
+      }
+    >
+      <form id="task-form" onSubmit={submit}>
         {errors._global && <div className="form-error" style={{ marginBottom: 12 }}>{errors._global}</div>}
         <FormField label="Title" value={form.title} onChange={set('title')} error={errors.title} required placeholder="What needs to be done?" />
         <FormTextarea label="Description" value={form.description} onChange={set('description')} rows={2} />
@@ -77,13 +89,6 @@ export default function TaskForm({ task, defaults = {}, onClose, onSuccess }) {
         <FormSearchSelect label="Account" options={accountOpts} value={form.account_id} onChange={set('account_id')} />
         <FormSearchSelect label="Contact" options={contactOpts} value={form.contact_id} onChange={set('contact_id')} />
         <FormSearchSelect label="Deal"    options={dealOpts}    value={form.deal_id}    onChange={set('deal_id')} />
-
-        <ModalFooter>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : isEdit ? 'Save' : 'Create task'}
-          </button>
-        </ModalFooter>
       </form>
     </Modal>
   );

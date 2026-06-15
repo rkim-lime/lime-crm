@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import SlidePanel, { PanelFooter } from './SlidePanel';
+import SlidePanel from './SlidePanel';
 import { FormField, FormSelect, FormMultiSelect, FormTextarea, FormToggle, FormSlider, FormTagInput, FormSection, FormGrid, FormSearchSelect } from './Form';
 import { useCreateContact, useUpdateContact } from '../hooks/useContacts';
 import { useProfiles } from '../hooks/useDashboard';
@@ -103,9 +103,20 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
   const segments = TIER_SEGMENTS[form.tier] ?? [];
 
   return (
-    <SlidePanel title={isEdit ? 'Edit Contact' : 'New Contact'} onClose={onClose}>
-      <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-        <div style={{ padding: '20px 24px', flex: 1 }}>
+    <SlidePanel
+      title={isEdit ? 'Edit Contact' : 'New Contact'}
+      onClose={onClose}
+      footer={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="submit" form="contact-form" className="btn btn-primary" disabled={saving}>
+            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create contact'}
+          </button>
+        </>
+      }
+    >
+      <form id="contact-form" onSubmit={submit}>
+        <div style={{ padding: '20px 24px' }}>
           {errors._global && <div className="form-error" style={{ marginBottom: 12 }}>{errors._global}</div>}
 
           <FormSection title="Identity" />
@@ -170,12 +181,6 @@ export default function ContactForm({ contact, onClose, onSuccess }) {
           </RoleGate>
         </div>
 
-        <PanelFooter>
-          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button type="submit" className="btn btn-primary" disabled={saving}>
-            {saving ? 'Saving…' : isEdit ? 'Save changes' : 'Create contact'}
-          </button>
-        </PanelFooter>
       </form>
     </SlidePanel>
   );

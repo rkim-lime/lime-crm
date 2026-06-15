@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import Modal, { ModalFooter } from './Modal';
+import Modal from './Modal';
 import { FormSearchSelect } from './Form';
 import { useProfiles } from '../hooks/useDashboard';
 import { useUpdateAccount } from '../hooks/useAccounts';
@@ -27,7 +27,19 @@ export default function AssignServiceManagerModal({ account, onClose }) {
   };
 
   return (
-    <Modal title="Assign Service Manager" onClose={onClose} width={420}>
+    <Modal
+      title="Assign Service Manager"
+      onClose={onClose}
+      width={420}
+      footer={
+        <>
+          <button className="btn btn-secondary" onClick={onClose} disabled={update.isPending}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={update.isPending}>
+            {update.isPending ? 'Saving…' : 'Assign'}
+          </button>
+        </>
+      }
+    >
       {error && (
         <div style={{ marginBottom: 12, padding: '10px 14px', background: '#fef2f2', borderRadius: 6, border: '1px solid #fca5a5', fontSize: 13, color: '#dc2626' }}>
           {error}
@@ -43,12 +55,6 @@ export default function AssignServiceManagerModal({ account, onClose }) {
       <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 4, marginBottom: 8 }}>
         The Service Manager takes over primary relationship once the account goes Live.
       </div>
-      <ModalFooter>
-        <button className="btn btn-secondary" onClick={onClose} disabled={update.isPending}>Cancel</button>
-        <button className="btn btn-primary" onClick={handleSave} disabled={update.isPending}>
-          {update.isPending ? 'Saving…' : 'Assign'}
-        </button>
-      </ModalFooter>
     </Modal>
   );
 }

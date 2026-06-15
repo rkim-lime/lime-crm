@@ -132,6 +132,7 @@ export default function Layout({ title, children }) {
               { to: '/funnel',                 label: 'Funnels',      icon: '⬇' },
               { to: '/reports/lead-hygiene',   label: 'Lead Hygiene', icon: '◍' },
               { to: '/reports/ownership',      label: 'Ownership',    icon: '◑' },
+              { to: '/reports/upsell',         label: 'Upsell',       icon: '↑' },
             ].map(({ to, label, icon }) => (
               <NavLink
                 key={to}

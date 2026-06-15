@@ -160,3 +160,79 @@ export function EmptyState({ icon = '○', text }) {
     </div>
   );
 }
+
+const STRATEGY_ASSET_LABELS = {
+  equities:     'Equities',
+  options:      'Options',
+  futures:      'Futures',
+  crypto:       'Crypto',
+  fixed_income: 'Fixed Income',
+  fx:           'FX',
+  other:        'Other',
+};
+
+const STRATEGY_ASSET_STYLES = {
+  equities:     { background: '#E6F1FB', color: '#185FA5' },
+  options:      { background: '#EAF3DE', color: '#3B6D11' },
+  futures:      { background: '#FAEEDA', color: '#854F0B' },
+  crypto:       { background: '#F3E8FF', color: '#6B21A8' },
+  fixed_income: { background: '#E0F2FE', color: '#0369A1' },
+  fx:           { background: '#FFF7ED', color: '#C2410C' },
+  other:        { background: '#F1F5F9', color: '#475569' },
+};
+
+export function StrategyAssetPill({ value }) {
+  const style = STRATEGY_ASSET_STYLES[value] || STRATEGY_ASSET_STYLES.other;
+  const label = STRATEGY_ASSET_LABELS[value] || value;
+  return (
+    <span style={{
+      ...style,
+      padding: '2px 8px',
+      borderRadius: '4px',
+      fontSize: '11px',
+      fontWeight: '500',
+      display: 'inline-block',
+      marginRight: '4px',
+      marginBottom: '2px',
+    }}>
+      {label}
+    </span>
+  );
+}
+
+export function StrategyAssetPills({ classes = [] }) {
+  if (!classes || classes.length === 0)
+    return <span style={{ color: '#888', fontSize: '12px' }}>—</span>;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+      {classes.map(c => <StrategyAssetPill key={c} value={c} />)}
+    </div>
+  );
+}
+
+const UPSELL_SUPPORTED = ['equities', 'options', 'futures'];
+
+export function UpsellGapPills({ strategyClasses = [], soldClasses = [] }) {
+  const gap = (strategyClasses || []).filter(c =>
+    UPSELL_SUPPORTED.includes(c) && !(soldClasses || []).includes(c)
+  );
+  if (gap.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+      {gap.map(c => (
+        <span key={c} style={{
+          background: '#FAEEDA',
+          color: '#854F0B',
+          border: '1px dashed #EF9F27',
+          padding: '2px 8px',
+          borderRadius: '4px',
+          fontSize: '11px',
+          fontWeight: '500',
+          display: 'inline-block',
+        }}>
+          ↑ {STRATEGY_ASSET_LABELS[c] || c}
+        </span>
+      ))}
+    </div>
+  );
+}

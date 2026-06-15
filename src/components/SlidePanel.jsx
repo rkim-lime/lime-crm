@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
-export default function SlidePanel({ title, onClose, children, width = 520 }) {
+export default function SlidePanel({ title, onClose, children, footer, width = 520 }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -16,12 +16,9 @@ export default function SlidePanel({ title, onClose, children, width = 520 }) {
           <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
         </div>
         <div className="slide-panel-body">{children}</div>
+        {footer && <div className="slide-panel-footer">{footer}</div>}
       </div>
     </div>,
     document.body
   );
-}
-
-export function PanelFooter({ children }) {
-  return <div className="slide-panel-footer">{children}</div>;
 }
