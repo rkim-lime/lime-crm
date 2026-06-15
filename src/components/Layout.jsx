@@ -107,7 +107,7 @@ export default function Layout({ title, children }) {
                 <NavLink
                   key={to}
                   to={to}
-                  className={`sidebar-item${navActive(to, pathname, prefix) ? ' active' : ''}`}
+                  className={() => `sidebar-item${navActive(to, pathname, prefix) ? ' active' : ''}`}
                 >
                   <Icon ch={icon} />
                   {label}
@@ -137,7 +137,7 @@ export default function Layout({ title, children }) {
               <NavLink
                 key={to}
                 to={to}
-                className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
+                className={() => `sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
               >
                 <Icon ch={icon} />
                 {label}
@@ -168,7 +168,7 @@ export default function Layout({ title, children }) {
               <NavLink
                 key={to}
                 to={to}
-                className={`sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
+                className={() => `sidebar-item${navActive(to, pathname) ? ' active' : ''}`}
               >
                 <Icon ch={icon} />
                 {label}
