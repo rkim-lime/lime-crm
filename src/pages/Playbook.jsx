@@ -219,11 +219,19 @@ function StartNode({ label, sub }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center' }}>
       <div style={{
-        background: 'var(--text-primary)', color: '#fff',
-        borderRadius: 30, padding: '9px 26px',
-        fontSize: 13.5, fontWeight: 600,
-        display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 3,
-        boxShadow: 'var(--shadow-sm)',
+        backgroundColor: '#1a1a1a',
+        color: '#ffffff',
+        border: '2px solid #444444',
+        borderRadius: '999px',
+        padding: '12px 32px',
+        fontWeight: '700',
+        fontSize: '15px',
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3,
+        textAlign: 'center',
+        letterSpacing: '0.02em',
       }}>
         {label}
         {sub && <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.65)', fontWeight: 400 }}>{sub}</span>}
@@ -236,10 +244,15 @@ function EndNode({ label }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'center' }}>
       <div style={{
-        background: 'var(--green)', color: '#fff',
-        borderRadius: 30, padding: '9px 26px',
-        fontSize: 13.5, fontWeight: 600,
-        boxShadow: 'var(--shadow-sm)',
+        backgroundColor: '#0F6E56',
+        color: '#ffffff',
+        border: '2px solid #085041',
+        borderRadius: '999px',
+        padding: '12px 32px',
+        fontWeight: '700',
+        fontSize: '15px',
+        display: 'inline-block',
+        textAlign: 'center',
       }}>
         ✓ {label}
       </div>
