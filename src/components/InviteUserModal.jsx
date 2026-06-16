@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCreateInvitation } from '../hooks/useUsers';
+import { supabase } from '../lib/supabase';
 
 const ROLES = [
   { value: 'admin',      label: 'Admin',      desc: 'Full access, user management' },
@@ -32,6 +33,13 @@ export default function InviteUserModal({ onClose }) {
     setEmailErr('');
     try {
       const data = await createInvitation.mutateAsync({ email, role, notes });
+      // Auto-send magic link so invitee receives email immediately
+      await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${window.location.origin}/accept-invite?token=${data.token}`,
+        },
+      });
       setInvitation(data);
       setStep(2);
     } catch (err) {
@@ -134,33 +142,34 @@ export default function InviteUserModal({ onClose }) {
           ) : (
             <>
               <div style={{ textAlign: 'center', marginBottom: 20 }}>
-                <div style={{ fontSize: 30, marginBottom: 10, color: 'var(--green)' }}>✓</div>
+                <div style={{ fontSize: 30, marginBottom: 10 }}>✉</div>
                 <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>
-                  Invite created for {invitation.email}
+                  Invitation sent!
                 </div>
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                  Copy the link below and send it to the invitee. It expires in 7 days.
+                  <strong>{invitation.email}</strong> will receive a login link via email.
                 </div>
               </div>
 
-              <div style={{
-                background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
-                borderRadius: 6, padding: '10px 12px', marginBottom: 4,
-              }}>
-                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Invite link
-                </div>
+              <details style={{ marginBottom: 20 }}>
+                <summary style={{ fontSize: 12, color: 'var(--text-tertiary)', cursor: 'pointer', marginBottom: 8 }}>
+                  Or copy this link
+                </summary>
                 <div style={{
-                  fontSize: 12, color: 'var(--text-primary)',
-                  wordBreak: 'break-all', fontFamily: 'var(--mono)',
+                  background: 'var(--bg-tertiary)', border: '1px solid var(--border)',
+                  borderRadius: 6, padding: '10px 12px', marginTop: 8,
                 }}>
-                  {inviteLink}
+                  <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Invite link
+                  </div>
+                  <div style={{
+                    fontSize: 12, color: 'var(--text-primary)',
+                    wordBreak: 'break-all', fontFamily: 'var(--mono)',
+                  }}>
+                    {inviteLink}
+                  </div>
                 </div>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 20 }}>
-                {/* TODO: Replace with supabase.auth.admin.inviteUserByEmail via Edge Function for automatic email sending */}
-                Automatic email delivery coming soon — copy and share the link manually for now.
-              </div>
+              </details>
 
               <div className="modal-footer">
                 <button className="btn btn-secondary" onClick={onClose}>Done</button>

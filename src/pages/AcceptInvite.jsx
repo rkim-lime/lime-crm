@@ -14,6 +14,9 @@ export default function AcceptInvite() {
   const [invitation, setInvitation] = useState(null);
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState(null);
+  const [sending,    setSending]    = useState(false);
+  const [sent,       setSent]       = useState(false);
+  const [magicErr,   setMagicErr]   = useState('');
 
   useEffect(() => {
     if (!token) {
@@ -48,6 +51,23 @@ export default function AcceptInvite() {
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/dashboard` },
     });
+
+  const handleMagicLink = async () => {
+    setSending(true);
+    setMagicErr('');
+    try {
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: invitation.email,
+        options: { emailRedirectTo: `${window.location.origin}/dashboard` },
+      });
+      if (otpErr) throw otpErr;
+      setSent(true);
+    } catch (err) {
+      setMagicErr(err.message);
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
     <div style={{
@@ -101,19 +121,48 @@ export default function AcceptInvite() {
               </div>
             </div>
 
-            <button className="oauth-btn" style={{ width: '100%', marginBottom: 10 }} onClick={handleGoogleSignIn}>
-              <GoogleIcon />
-              Continue with Google
-            </button>
-            <button
-              className="oauth-btn"
-              style={{ width: '100%', opacity: .5, cursor: 'not-allowed' }}
-              disabled
-            >
-              <MicrosoftIcon />
-              Continue with Microsoft&nbsp;
-              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>(coming soon)</span>
-            </button>
+            {sent ? (
+              <div style={{ textAlign: 'center', padding: '4px 0' }}>
+                <div style={{ fontSize: 32, marginBottom: 10 }}>✉</div>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Check your email</div>
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.65 }}>
+                  We sent a sign-in link to <strong>{invitation.email}</strong>.<br />
+                  Click the link to complete your sign-in.
+                </div>
+              </div>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  readOnly
+                  value={invitation.email}
+                  className="form-input"
+                  style={{ width: '100%', boxSizing: 'border-box', marginBottom: 8, opacity: 0.7 }}
+                />
+                {magicErr && (
+                  <div style={{ fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>{magicErr}</div>
+                )}
+                <button
+                  className="btn btn-primary"
+                  style={{ width: '100%', marginBottom: 16 }}
+                  onClick={handleMagicLink}
+                  disabled={sending}
+                >
+                  {sending ? 'Sending…' : 'Send Magic Link'}
+                </button>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>or</span>
+                  <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                </div>
+
+                <button className="oauth-btn" style={{ width: '100%' }} onClick={handleGoogleSignIn}>
+                  <GoogleIcon />
+                  Continue with Google
+                </button>
+              </>
+            )}
 
             <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 20, lineHeight: 1.6 }}>
               By signing in you accept the terms of service. Your role will be automatically assigned based on this invitation.
