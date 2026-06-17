@@ -40,6 +40,7 @@ const STATIC_NAV_SECTIONS = [
 ];
 
 const BASE_SETTINGS_ITEMS = [
+  { to: '/settings/profile', label: 'My Profile',     icon: '◈' },
   { to: '/integrations',     label: 'Integrations',   icon: '⟳' },
   { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
 ];

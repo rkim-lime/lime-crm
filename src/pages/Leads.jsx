@@ -6,7 +6,7 @@ import LeadForm from '../components/LeadForm';
 import { useLeads, useOrphanedConversions } from '../hooks/useLeads';
 import { useProfiles } from '../hooks/useDashboard';
 import { useAuth } from '../hooks/useAuth.jsx';
-import { AssetPills, TierBadge, fmtDate, fmtRelTime, TableSkeleton, ErrorBanner } from './shared';
+import { AssetPills, TierBadge, OwnerName, fmtDate, fmtRelTime, TableSkeleton, ErrorBanner } from './shared';
 
 const INDIVIDUAL_STAGES = [
   { value: 'visitor',     label: 'Visitor' },
@@ -185,7 +185,7 @@ export default function Leads() {
                     </td>
                     <td><ScorePill score={lead.lead_score} /></td>
                     <td><AssetPills classes={lead.asset_classes} /></td>
-                    <td><span style={{ fontSize: 13 }}>{lead.sales_owner?.full_name ?? '—'}</span></td>
+                    <td><span style={{ fontSize: 13 }}><OwnerName profile={lead.sales_owner} /></span></td>
                     <td style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>{fmtRelTime(lead.created_at)}</td>
                   </tr>
                 );

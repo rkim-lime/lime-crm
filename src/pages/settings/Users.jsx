@@ -3,6 +3,8 @@ import Layout from '../../components/Layout';
 import ActionMenu from '../../components/ActionMenu';
 import ConfirmModal from '../../components/ConfirmModal';
 import InviteUserModal from '../../components/InviteUserModal';
+import EditUserNameModal from '../../components/EditUserNameModal';
+import DeleteUserModal from '../../components/DeleteUserModal';
 import { useAuth } from '../../hooks/useAuth';
 import {
   useAllProfiles, useUpdateUserRole, useDeactivateUser,
@@ -163,8 +165,8 @@ function PendingSection({ profiles, onError }) {
 
 // ── Active / Inactive user table ──────────────────────────────
 
-function UserTable({ profiles, showSuperstar, onDeactivate, onReactivate, onRemove, onRoleChange, allowActions }) {
-  const { session } = useAuth();
+function UserTable({ profiles, showSuperstar, onDeactivate, onReactivate, onRemove, onRoleChange, onEditName, onDeletePermanently, allowActions }) {
+  const { session, isSuperuser } = useAuth();
   const selfId = session?.user?.id;
 
   return (
@@ -251,8 +253,12 @@ function UserTable({ profiles, showSuperstar, onDeactivate, onReactivate, onRemo
                       </button>
                     ) : superuser || isSelf ? null : (
                       <ActionMenu items={[
+                        { label: 'Edit Name', onClick: () => onEditName(u) },
                         { label: 'Deactivate', onClick: () => onDeactivate(u) },
                         { label: 'Remove from System', danger: true, onClick: () => onRemove(u) },
+                        ...(isSuperuser ? [
+                          { label: 'Delete Permanently', danger: true, onClick: () => onDeletePermanently(u) },
+                        ] : []),
                       ]} />
                     )}
                   </td>
@@ -272,6 +278,8 @@ export default function Users() {
   const [showInvite,      setShowInvite]      = useState(false);
   const [showInactive,    setShowInactive]    = useState(false);
   const [confirm,         setConfirm]         = useState(null); // { type, user }
+  const [editNameTarget,  setEditNameTarget]  = useState(null);
+  const [deleteTarget,    setDeleteTarget]    = useState(null);
   const [errorMsg,        setErrorMsg]        = useState('');
 
   const profiles     = useAllProfiles();
@@ -355,6 +363,8 @@ export default function Users() {
                 onDeactivate={u => setConfirm({ type: 'deactivate', user: u })}
                 onReactivate={handleReactivate}
                 onRemove={u => setConfirm({ type: 'remove', user: u })}
+                onEditName={u => setEditNameTarget(u)}
+                onDeletePermanently={u => setDeleteTarget(u)}
               />
             )}
           </div>
@@ -379,6 +389,8 @@ export default function Users() {
                   onDeactivate={u => setConfirm({ type: 'deactivate', user: u })}
                   onReactivate={handleReactivate}
                   onRemove={u => setConfirm({ type: 'remove', user: u })}
+                  onEditName={u => setEditNameTarget(u)}
+                  onDeletePermanently={u => setDeleteTarget(u)}
                 />
               )}
             </div>
@@ -388,6 +400,16 @@ export default function Users() {
 
       {/* Invite modal */}
       {showInvite && <InviteUserModal onClose={() => setShowInvite(false)} />}
+
+      {/* Edit name modal */}
+      {editNameTarget && (
+        <EditUserNameModal user={editNameTarget} onClose={() => setEditNameTarget(null)} />
+      )}
+
+      {/* Permanent delete modal (superuser only) */}
+      {deleteTarget && (
+        <DeleteUserModal user={deleteTarget} onClose={() => setDeleteTarget(null)} />
+      )}
 
       {/* Confirm modals */}
       <ConfirmModal

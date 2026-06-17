@@ -8,7 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useAccounts, useDeleteAccount, useArchiveAccount } from '../hooks/useAccounts';
 import { useAuth } from '../hooks/useAuth.jsx';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, RelevantAssetPill, UpsellGapPills, TableSkeleton, ErrorBanner, EmptyState } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, RelevantAssetPill, UpsellGapPills, OwnerName, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const TIER_SEGMENTS = {
   enterprise: ['hft_firm','hedge_fund','quant_fund','broker_dealer','family_office','prime_broker'],
@@ -155,10 +155,10 @@ export default function Accounts() {
                   </td>
                   <td><KycBadge status={a.kyc_status} /></td>
                   <td>{a.avg_daily_volume_usd ? <span style={{ fontSize:13 }}>${(a.avg_daily_volume_usd/1_000_000).toFixed(0)}M</span> : <span className="text-tertiary">—</span>}</td>
-                  <td><span style={{ fontSize: 13 }}>{a.sales_owner?.full_name ?? '—'}</span></td>
+                  <td><span style={{ fontSize: 13 }}><OwnerName profile={a.sales_owner} /></span></td>
                   <td>
                     {a.service_manager
-                      ? <span style={{ fontSize: 13 }}>{a.service_manager.full_name}</span>
+                      ? <span style={{ fontSize: 13 }}><OwnerName profile={a.service_manager} /></span>
                       : ['active', 'onboarding'].includes(a.status)
                         ? <span style={{ fontSize: 12, color: '#d97706', fontWeight: 600 }}>⚠ Needed</span>
                         : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>

@@ -16,7 +16,7 @@ import { useAccount, useAccountContacts, useDeleteAccount, useArchiveAccount } f
 import { useDeals } from '../hooks/useDeals';
 import { useTasks } from '../hooks/useTasks';
 import { useActivities } from '../hooks/useActivities';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner, RelevantAssetPills, RelevantAssetPill, UpsellGapPills } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, StageBadge, ActivityIcon, fmtCurrency, fmtRelTime, fmtDate, ErrorBanner, RelevantAssetPills, RelevantAssetPill, UpsellGapPills, OwnerName } from './shared';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 
 const TABS = ['Overview', 'Documents'];
@@ -186,13 +186,11 @@ export default function AccountDetail() {
               </div>
 
               <Field label="Sales Owner">
-                {a.sales_owner
-                  ? <span style={{ fontWeight: 500 }}>{a.sales_owner.full_name || a.sales_owner.email}</span>
-                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                <span style={{ fontWeight: 500 }}><OwnerName profile={a.sales_owner} /></span>
               </Field>
               <Field label="Service Manager">
                 {a.service_manager ? (
-                  <span style={{ fontWeight: 500 }}>{a.service_manager.full_name || a.service_manager.email}</span>
+                  <span style={{ fontWeight: 500 }}><OwnerName profile={a.service_manager} /></span>
                 ) : ['active', 'onboarding'].includes(a.status) ? (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ color: '#d97706', fontWeight: 500, fontSize: 12.5 }}>⚠ Service Manager required</span>

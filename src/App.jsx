@@ -27,6 +27,7 @@ import OwnershipHygiene     from './pages/reports/OwnershipHygiene';
 import UpsellOpportunities  from './pages/reports/UpsellOpportunities';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
+import MyProfile     from './pages/MyProfile';
 import AcceptInvite  from './pages/AcceptInvite';
 import Playbook      from './pages/Playbook';
 
@@ -93,6 +94,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="/settings/profile" element={<ProtectedRoute><MyProfile /></ProtectedRoute>} />
             <Route path="/settings" element={<Navigate to="/settings/users" replace />} />
 
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

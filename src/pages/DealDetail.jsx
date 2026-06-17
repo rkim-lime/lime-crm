@@ -15,7 +15,7 @@ import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 import DealTeamPanel from '../components/DealTeamPanel';
 import AssignOwnerModal from '../components/AssignOwnerModal';
 import {
-  TierBadge, StageBadge, AssetPills, KycBadge, ActivityIcon,
+  TierBadge, StageBadge, AssetPills, KycBadge, ActivityIcon, OwnerName,
   fmtCurrency, fmtDate, fmtRelTime, ErrorBanner,
 } from './shared';
 
@@ -161,7 +161,7 @@ export default function DealDetail() {
               <AssetPills classes={d.asset_classes} />
             </DetailRow>
             <DetailRow label="Sales Owner">
-              {d.sales_owner ? (d.sales_owner.full_name || d.sales_owner.email) : null}
+              <OwnerName profile={d.sales_owner} />
             </DetailRow>
           </div>
 

@@ -161,6 +161,13 @@ export function EmptyState({ icon = '○', text }) {
   );
 }
 
+export function OwnerName({ profile }) {
+  if (!profile || !profile.full_name) {
+    return <span style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>Deleted User</span>;
+  }
+  return <span>{profile.full_name}</span>;
+}
+
 const RELEVANT_ASSET_LABELS = {
   equities:     'Equities',
   options:      'Options',

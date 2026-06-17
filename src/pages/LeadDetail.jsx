@@ -13,7 +13,7 @@ import { useLead, useUpdateLead, useDeleteLead } from '../hooks/useLeads';
 import { useActivities } from '../hooks/useActivities';
 import { ScoreCard, ScoreHistoryMini } from '../components/ScoreCard';
 import {
-  TierBadge, AssetPills, ActivityIcon,
+  TierBadge, AssetPills, ActivityIcon, OwnerName,
   fmtDate, fmtRelTime, fmtCurrency, ErrorBanner,
 } from './shared';
 
@@ -171,7 +171,7 @@ export default function LeadDetail() {
             <DetailRow label="Stage"><StageBadgeInd stage={l.stage} /></DetailRow>
             <DetailRow label="Status"><StatusBadge status={l.status} /></DetailRow>
             <DetailRow label="Source">{l.source?.replace(/_/g, ' ')}</DetailRow>
-            <DetailRow label="Sales Owner">{l.sales_owner?.full_name ?? 'Unassigned'}</DetailRow>
+            <DetailRow label="Sales Owner"><OwnerName profile={l.sales_owner} /></DetailRow>
             <div style={{ marginTop: 8 }}>
               <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 4 }}>Asset Classes</div>
               <AssetPills classes={l.asset_classes} />

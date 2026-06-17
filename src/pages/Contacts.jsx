@@ -7,7 +7,7 @@ import ActionMenu from '../components/ActionMenu';
 import ConfirmModal from '../components/ConfirmModal';
 import { useIsAdmin } from '../components/RoleGate';
 import { useContacts, useDeleteContact, useArchiveContact } from '../hooks/useContacts';
-import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, LeadScore, TableSkeleton, ErrorBanner, EmptyState } from './shared';
+import { TierBadge, SegmentBadge, StatusBadge, KycBadge, AssetPills, LeadScore, OwnerName, TableSkeleton, ErrorBanner, EmptyState } from './shared';
 
 const TIER_SEGMENTS = {
   enterprise: ['hft_firm','hedge_fund','quant_fund','broker_dealer','family_office','prime_broker'],
@@ -115,7 +115,7 @@ export default function Contacts() {
                   <td>{c.tier === 'individual' ? <LeadScore score={c.lead_score} /> : <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>—</span>}</td>
                   <td><AssetPills classes={c.asset_classes} /></td>
                   <td><KycBadge status={c.kyc_status} /></td>
-                  <td><span style={{ fontSize: 13 }}>{c.sales_owner?.full_name ?? '—'}</span></td>
+                  <td><span style={{ fontSize: 13 }}><OwnerName profile={c.sales_owner} /></span></td>
                   <td onClick={e => e.stopPropagation()}>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => setPanel(c) },

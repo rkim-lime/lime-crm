@@ -100,6 +100,37 @@ export function useRemoveUser() {
   });
 }
 
+export function useUpdateUserName() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, full_name }) => {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ full_name })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+}
+
+export function useDeleteUserPermanently() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (userId) => {
+      const { error } = await supabase.rpc('delete_user_completely', {
+        target_user_id: userId,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+}
+
 // ── Invitations ───────────────────────────────────────────────
 
 export function useAllInvitations() {
@@ -123,13 +154,14 @@ export function useCreateInvitation() {
   const qc = useQueryClient();
   const { session } = useAuth();
   return useMutation({
-    mutationFn: async ({ email, role, notes }) => {
+    mutationFn: async ({ email, role, notes, full_name }) => {
       const { data, error } = await supabase
         .from('invitations')
         .insert({
           email,
           role,
-          notes: notes || null,
+          notes:     notes     || null,
+          full_name: full_name || null,
           invited_by: session?.user?.id ?? null,
         })
         .select()

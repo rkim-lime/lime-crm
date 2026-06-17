@@ -18,6 +18,7 @@ function isValidEmail(v) {
 
 export default function InviteUserModal({ onClose }) {
   const [step,      setStep]     = useState(1);
+  const [fullName,  setFullName] = useState('');
   const [email,     setEmail]    = useState('');
   const [role,      setRole]     = useState('analyst');
   const [notes,     setNotes]    = useState('');
@@ -32,12 +33,13 @@ export default function InviteUserModal({ onClose }) {
     if (!isValidEmail(email)) { setEmailErr('Enter a valid email address.'); return; }
     setEmailErr('');
     try {
-      const data = await createInvitation.mutateAsync({ email, role, notes });
+      const data = await createInvitation.mutateAsync({ email, role, notes, full_name: fullName || null });
       // Auto-send magic link so invitee receives email immediately
       await supabase.auth.signInWithOtp({
         email,
         options: {
           emailRedirectTo: `${window.location.origin}/accept-invite?token=${data.token}`,
+          data: { full_name: fullName || null },
         },
       });
       setInvitation(data);
@@ -75,13 +77,29 @@ export default function InviteUserModal({ onClose }) {
         <div className="modal-body">
           {step === 1 ? (
             <form onSubmit={handleSubmit}>
+              {/* Full Name */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 6 }}>
+                  Full Name
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={fullName}
+                  onChange={e => setFullName(e.target.value)}
+                  placeholder="e.g. Jane Smith"
+                  className="form-input"
+                  style={{ width: '100%', boxSizing: 'border-box' }}
+                />
+              </div>
+
               {/* Email */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 6 }}>
                   Email address *
                 </label>
                 <input
-                  type="email" required autoFocus
+                  type="email" required
                   value={email}
                   onChange={e => { setEmail(e.target.value); setEmailErr(''); }}
                   placeholder="colleague@company.com"

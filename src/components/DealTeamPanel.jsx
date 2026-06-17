@@ -3,6 +3,7 @@ import { useIsAdmin } from './RoleGate';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { useDealTeam, useRemoveDealTeamMember } from '../hooks/useDealTeam';
 import AddDealTeamModal from './AddDealTeamModal';
+import { OwnerName } from '../pages/shared';
 
 const ROLE_STYLE = {
   'Team Member':                 { background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' },
@@ -46,7 +47,7 @@ export default function DealTeamPanel({ dealId }) {
         )}
         {(team.data ?? []).map(member => {
           const roleStyle = ROLE_STYLE[member.role] ?? ROLE_STYLE['Team Member'];
-          const name = member.profile?.full_name || member.profile?.email || 'Unknown';
+          const nameStr = member.profile?.full_name || member.profile?.email || '';
           return (
             <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{
@@ -55,10 +56,10 @@ export default function DealTeamPanel({ dealId }) {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)',
               }}>
-                {initials(name)}
+                {initials(nameStr)}
               </div>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 500 }}>{name}</div>
+                <div style={{ fontSize: 13.5, fontWeight: 500 }}><OwnerName profile={member.profile} /></div>
                 {member.profile?.role && (
                   <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>{member.profile.role}</div>
                 )}
