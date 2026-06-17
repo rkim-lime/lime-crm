@@ -1,33 +1,71 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+
+const MENU_HEIGHT = 150; // estimated max dropdown height
 
 // items: Array<{ label, onClick, danger?, disabled? }>
 export default function ActionMenu({ items }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const [open, setOpen]   = useState(false);
+  const [pos,  setPos]    = useState({ top: 0, left: 0, openUp: false });
+  const btnRef = useRef(null);
+
+  const close = useCallback(() => setOpen(false), []);
+
+  const handleOpen = () => {
+    if (open) { close(); return; }
+    const rect = btnRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const openUp = spaceBelow < MENU_HEIGHT;
+    setPos({
+      top:    openUp ? rect.top   : rect.bottom + 4,
+      left:   rect.right,
+      openUp,
+    });
+    setOpen(true);
+  };
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [open]);
+    const onDown   = (e) => { if (!btnRef.current?.contains(e.target)) close(); };
+    const onScroll = () => close();
+    const onResize = () => close();
+    document.addEventListener('mousedown', onDown);
+    window.addEventListener('scroll',     onScroll, true);
+    window.addEventListener('resize',     onResize);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      window.removeEventListener('scroll',     onScroll, true);
+      window.removeEventListener('resize',     onResize);
+    };
+  }, [open, close]);
 
   return (
-    <div ref={ref} className="card-menu" onClick={e => e.stopPropagation()}>
-      <button className="card-menu-btn" onClick={() => setOpen(o => !o)} title="Actions">⋮</button>
-      {open && (
-        <div className="card-menu-dropdown">
+    <div className="card-menu" onClick={e => e.stopPropagation()}>
+      <button ref={btnRef} className="card-menu-btn" onClick={handleOpen} title="Actions">⋮</button>
+      {open && createPortal(
+        <div
+          className="card-menu-dropdown"
+          style={{
+            position:  'fixed',
+            top:       pos.openUp ? undefined : pos.top,
+            bottom:    pos.openUp ? window.innerHeight - pos.top : undefined,
+            left:      pos.left,
+            transform: 'translateX(-100%)',
+            zIndex:    1000,
+          }}
+        >
           {items.map((item, i) => (
             <button
               key={i}
               style={item.danger ? { color: 'var(--red)' } : {}}
               disabled={item.disabled}
-              onClick={() => { item.onClick(); setOpen(false); }}
+              onClick={() => { item.onClick(); close(); }}
             >
               {item.label}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
