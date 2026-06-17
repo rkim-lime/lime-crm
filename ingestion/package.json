@@ -7,12 +7,13 @@
     "node": ">=18"
   },
   "scripts": {
-    "ingest:13f":      "node src/index.js ingest-13f",
+    "ingest:13f": "node src/index.js ingest-13f",
     "ingest:13f:test": "node src/index.js ingest-13f --limit 5"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
-    "dotenv":               "^16.3.1",
-    "fast-xml-parser":      "^4.3.3"
+    "dotenv": "^16.3.1",
+    "fast-xml-parser": "^4.3.3",
+    "ws": "^8.21.0"
   }
 }
