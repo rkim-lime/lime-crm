@@ -121,10 +121,6 @@ export async function getFilingHistory(cik, limit = 3) {
   return results;
 }
 
-/**
- * Resolve an href from an EDGAR index page to an absolute URL.
- * Handles absolute paths (/Archives/...), relative paths, and full URLs.
- */
 function resolveEdgarHref(href, baseUrl) {
   if (href.startsWith('http')) return href;
   if (href.startsWith('/'))    return `${EDGAR_BASE}${href}`;
@@ -134,54 +130,46 @@ function resolveEdgarHref(href, baseUrl) {
 /**
  * Fetch the information table XML from a 13F filing.
  * Strategy:
- *  1. Fetch the filing index JSON (machine-readable, most reliable)
- *  2. Fall back to parsing the index HTML for an info-table link
- *  3. Fall back to trying common filenames directly
+ *  1. Fetch the index HTML and try all XML links except primary_doc/cover,
+ *     prioritising links whose name contains 'infotable' / 'information'.
+ *  2. Fall back to a list of common filenames.
  */
 export async function getFilingDocument(cik, accessionNo) {
   const accNoDashes = accessionNo.replace(/-/g, '');
   const numericCik  = parseInt(cik, 10);
   const baseUrl     = `${EDGAR_BASE}/Archives/edgar/data/${numericCik}/${accNoDashes}`;
 
-  // 1. Try the EDGAR filing index JSON (available for modern filings)
-  try {
-    const indexJson = await secJson(
-      `${EDGAR_DATA}/Archives/edgar/data/${numericCik}/${accNoDashes}/${accNoDashes}-index.json`
-    );
-    const docs = indexJson?.directory?.item ?? [];
-    const infoDoc = docs.find(d =>
-      /infotable|information[-_]?table|form13finfotable/i.test(d.name ?? '')
-      && /\.xml$/i.test(d.name ?? '')
-    );
-    if (infoDoc) {
-      const xml = await secText(`${baseUrl}/${infoDoc.name}`);
-      if (xml.includes('infoTable') || xml.includes('informationTable')) return xml;
-    }
-  } catch { /* fall through */ }
-
-  // 2. Parse the index HTML for an info-table link (exclude primary_doc.xml)
+  // 1. Parse the filing index HTML for XML document links
   let indexHtml = '';
   try {
     indexHtml = await secText(`${baseUrl}/${accNoDashes}-index.htm`);
-  } catch { /* fall through */ }
+  } catch { /* fall through to direct filenames */ }
 
   if (indexHtml) {
-    // Match links specifically named as info table, exclude primary_doc
-    const match = indexHtml.match(
-      /href="([^"]*(?:infotable|information[-_]?table|form13finfotable)[^"]*\.xml)"/i
-    );
-    if (match) {
+    // Extract all .xml hrefs, skip cover/primary documents
+    const xmlHrefs = [...indexHtml.matchAll(/href="([^"]*\.xml)"/gi)]
+      .map(m => m[1])
+      .filter(h => !/(primary_doc|cover|xbrl)/i.test(h));
+
+    // Try infotable-named links first, then any remaining XML
+    const ordered = [
+      ...xmlHrefs.filter(h => /infotable|information/i.test(h)),
+      ...xmlHrefs.filter(h => !/infotable|information/i.test(h)),
+    ];
+
+    for (const href of ordered) {
       try {
-        const xml = await secText(resolveEdgarHref(match[1], baseUrl));
+        const xml = await secText(resolveEdgarHref(href, baseUrl));
         if (xml.includes('infoTable') || xml.includes('informationTable')) return xml;
-      } catch { /* fall through */ }
+      } catch { /* try next */ }
     }
   }
 
-  // 3. Try common info-table filenames directly
+  // 2. Try common filenames directly (covers filers with no index or unusual structure)
   const candidates = [
     'infotable.xml',
     'form13fInfoTable.xml',
+    'InformationTable.xml',
     `${accNoDashes}-0002.txt`,
     `${accNoDashes}-0003.txt`,
   ];
