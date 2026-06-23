@@ -15,6 +15,8 @@ import Deals         from './pages/Deals';
 import DealDetail    from './pages/DealDetail';
 import Leads         from './pages/Leads';
 import LeadDetail    from './pages/LeadDetail';
+import Prospects     from './pages/Prospects';
+import ProspectDetail from './pages/ProspectDetail';
 import Funnel        from './pages/Funnel';
 import Tasks         from './pages/Tasks';
 import Activity      from './pages/Activity';
@@ -64,6 +66,8 @@ export default function App() {
             <Route path="/deals/:id"        element={<ProtectedRoute><DealDetail /></ProtectedRoute>} />
             <Route path="/leads"            element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/leads/:id"        element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
+            <Route path="/prospects"        element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
+            <Route path="/prospects/:id"    element={<ProtectedRoute><ProspectDetail /></ProtectedRoute>} />
             <Route path="/funnel"           element={<ProtectedRoute><Funnel /></ProtectedRoute>} />
             <Route path="/reports/lead-hygiene" element={<ProtectedRoute><LeadHygiene /></ProtectedRoute>} />
             <Route path="/reports/ownership"    element={<ProtectedRoute><OwnershipHygiene /></ProtectedRoute>} />

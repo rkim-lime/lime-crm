@@ -1,0 +1,399 @@
+import { useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import Layout from '../components/Layout';
+import RoleGate from '../components/RoleGate';
+import ConfirmModal from '../components/ConfirmModal';
+import { useProspect, useUpdateProspect, useConvertProspectToAccount } from '../hooks/useProspects';
+import { useProfiles } from '../hooks/useDashboard';
+import { ErrorBanner, fmtDate, fmtRelTime } from './shared';
+
+const STATUS_OPTS = [
+  { value: 'uncontacted',  label: 'Uncontacted' },
+  { value: 'contacted',    label: 'Contacted' },
+  { value: 'qualified',    label: 'Qualified' },
+  { value: 'disqualified', label: 'Disqualified' },
+  { value: 'converted',    label: 'Converted' },
+  { value: 'promoted',     label: 'Promoted' },
+];
+
+const STATUS_COLOR = {
+  uncontacted:  'var(--text-tertiary)',
+  contacted:    'var(--accent)',
+  qualified:    'var(--green)',
+  disqualified: 'var(--red)',
+  converted:    '#7c3aed',
+  promoted:     '#7c3aed',
+};
+
+const SEGMENT_LABELS = {
+  hedge_fund:    'Hedge Fund',
+  quant_fund:    'Quant Fund',
+  prop_trader:   'Prop Trader',
+  broker_dealer: 'Broker-Dealer',
+  pension:       'Pension / Endowment',
+};
+
+function fmtAUM(n) {
+  if (n == null) return '—';
+  if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(2)}B`;
+  if (n >= 1_000_000)     return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)         return `$${(n / 1_000).toFixed(0)}K`;
+  return `$${n}`;
+}
+
+function fmtPct(n) {
+  if (n == null) return '—';
+  return `${Number(n).toFixed(1)}%`;
+}
+
+function StatusDot({ status }) {
+  const color = STATUS_COLOR[status] ?? 'var(--text-tertiary)';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, fontWeight: 600, color }}>
+      <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      {status?.replace(/_/g, ' ') ?? '—'}
+    </span>
+  );
+}
+
+function FitBar({ score }) {
+  if (score == null) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+  const color = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ flex: 1, height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 3, transition: 'width .3s' }} />
+      </div>
+      <span style={{ fontSize: 14, fontWeight: 700, color, minWidth: 28 }}>{score}</span>
+    </div>
+  );
+}
+
+function DetailRow({ label, children }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '7px 0', borderBottom: '1px solid var(--border-subtle)', gap: 8 }}>
+      <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, textAlign: 'right' }}>{children ?? '—'}</span>
+    </div>
+  );
+}
+
+function Panel({ title, children, style }) {
+  return (
+    <div style={{
+      background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)',
+      borderRadius: 10, padding: '16px 18px', ...style,
+    }}>
+      {title && (
+        <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 12 }}>
+          {title}
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+export default function ProspectDetail() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [noteDraft, setNoteDraft]       = useState('');
+  const [convertConfirm, setConvertConfirm] = useState(false);
+
+  const prospect  = useProspect(id);
+  const profiles  = useProfiles();
+  const update    = useUpdateProspect();
+  const convert   = useConvertProspectToAccount();
+
+  if (prospect.isLoading) {
+    return (
+      <Layout title="Prospect">
+        <div style={{ padding: 24 }}>
+          <div className="skeleton skeleton-text" style={{ width: 240, height: 24 }} />
+        </div>
+      </Layout>
+    );
+  }
+  if (prospect.error) {
+    return (
+      <Layout title="Prospect">
+        <div style={{ padding: 24 }}>
+          <ErrorBanner message={prospect.error.message} onRetry={prospect.refetch} />
+        </div>
+      </Layout>
+    );
+  }
+
+  const p = prospect.data;
+  const filings = [...(p.filings ?? [])].sort(
+    (a, b) => (b.period_of_report ?? '').localeCompare(a.period_of_report ?? '')
+  );
+  const latestScore = (p.scores ?? [])[0];
+
+  const handleStatusChange = (e) => {
+    update.mutate({ id: p.id, status: e.target.value });
+  };
+
+  const handleAssigneeChange = (e) => {
+    update.mutate({ id: p.id, assigned_to: e.target.value || null });
+  };
+
+  const handleSaveNotes = () => {
+    update.mutate({ id: p.id, notes: noteDraft }, {
+      onSuccess: () => setEditingNotes(false),
+    });
+  };
+
+  const handleConvert = async () => {
+    const account = await convert.mutateAsync({ prospect: p });
+    setConvertConfirm(false);
+    navigate(`/accounts/${account.id}`);
+  };
+
+  return (
+    <Layout title={p.firm_name}>
+      {/* Header */}
+      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/prospects')}>
+          ← Prospects
+        </button>
+        <StatusDot status={p.status} />
+        {p.source === 'sec_13f' && (
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: 4 }}>
+            SEC 13F
+          </span>
+        )}
+        <span style={{ flex: 1 }} />
+
+        {p.status !== 'promoted' && p.status !== 'converted' && (
+          <RoleGate allow={['admin', 'sales', 'operations']}>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ background: '#7c3aed' }}
+              onClick={() => setConvertConfirm(true)}
+            >
+              Convert to Account →
+            </button>
+          </RoleGate>
+        )}
+        {(p.status === 'promoted' || p.status === 'converted') && (
+          <span style={{ fontSize: 12.5, color: '#7c3aed', fontWeight: 600 }}>✓ Promoted to Account</span>
+        )}
+      </div>
+
+      {/* Two-column layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, alignItems: 'start' }}>
+        {/* Left column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Signals panel */}
+          <Panel title="Portfolio Signals">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 24px' }}>
+              <DetailRow label="AUM (est.)">{fmtAUM(p.estimated_aum_usd)}</DetailRow>
+              <DetailRow label="Positions">{p.position_count ?? '—'}</DetailRow>
+              <DetailRow label="Equities %">{fmtPct(p.equities_pct)}</DetailRow>
+              <DetailRow label="Turnover">{fmtPct(p.portfolio_turnover_pct)}</DetailRow>
+              <DetailRow label="Options">
+                {p.options_present
+                  ? <span style={{ color: 'var(--green)', fontWeight: 600 }}>Yes</span>
+                  : <span style={{ color: 'var(--text-tertiary)' }}>No</span>}
+              </DetailRow>
+              <DetailRow label="Segment">
+                {p.inferred_segment ? (SEGMENT_LABELS[p.inferred_segment] ?? p.inferred_segment) : '—'}
+              </DetailRow>
+            </div>
+
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 6 }}>Fit Score</div>
+              <FitBar score={p.fit_score} />
+              {p.fit_score_computed_at && (
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 4 }}>
+                  computed {fmtRelTime(p.fit_score_computed_at)}
+                </div>
+              )}
+            </div>
+
+            {/* Score breakdown from latest run */}
+            {latestScore?.breakdown && Object.keys(latestScore.breakdown).length > 0 && (
+              <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-primary)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8 }}>
+                  Score Breakdown
+                </div>
+                {Object.entries(latestScore.breakdown).map(([key, val]) => (
+                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{key.replace(/_/g, ' ')}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{typeof val === 'number' ? val.toFixed(1) : val}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          {/* Filings */}
+          <Panel title={`13F Filings (${filings.length})`}>
+            {filings.length === 0 ? (
+              <div style={{ color: 'var(--text-tertiary)', fontSize: 13, padding: '8px 0' }}>No filings ingested yet</div>
+            ) : (
+              <div className="table-wrap" style={{ margin: '0 -18px', marginTop: -4, borderRadius: '0 0 10px 10px', border: 'none', boxShadow: 'none' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Period</th>
+                      <th>Filed</th>
+                      <th>AUM</th>
+                      <th>Holdings</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filings.map(f => (
+                      <tr key={f.id}>
+                        <td style={{ fontSize: 13, fontWeight: 500 }}>{f.period_of_report ?? '—'}</td>
+                        <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{f.filed_at ?? '—'}</td>
+                        <td style={{ fontSize: 12.5 }}>{fmtAUM(f.total_value_usd)}</td>
+                        <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{f.holding_count ?? '—'}</td>
+                        <td>
+                          {f.source_url && (
+                            <a
+                              href={f.source_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: 12, color: 'var(--accent)' }}
+                              onClick={e => e.stopPropagation()}
+                            >
+                              EDGAR ↗
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+        </div>
+
+        {/* Right column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Status & assignment */}
+          <Panel title="Management">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11.5, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Status</label>
+                <select
+                  className="filter-select"
+                  style={{ width: '100%' }}
+                  value={p.status}
+                  onChange={handleStatusChange}
+                  disabled={update.isPending}
+                >
+                  {STATUS_OPTS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: 11.5, color: 'var(--text-tertiary)', display: 'block', marginBottom: 4 }}>Assigned To</label>
+                <select
+                  className="filter-select"
+                  style={{ width: '100%' }}
+                  value={p.assigned_to ?? ''}
+                  onChange={handleAssigneeChange}
+                  disabled={update.isPending}
+                >
+                  <option value="">Unassigned</option>
+                  {(profiles.data ?? []).map(pr => (
+                    <option key={pr.id} value={pr.id}>{pr.full_name || pr.email}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </Panel>
+
+          {/* Metadata */}
+          <Panel title="Details">
+            <DetailRow label="Firm">{p.firm_name}</DetailRow>
+            {p.cik && (
+              <DetailRow label="CIK">
+                <a
+                  href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${p.cik}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: 'var(--accent)' }}
+                >
+                  {p.cik} ↗
+                </a>
+              </DetailRow>
+            )}
+            <DetailRow label="Source">
+              {p.source === 'sec_13f' ? 'SEC 13F' : p.source?.replace(/_/g, ' ') ?? '—'}
+            </DetailRow>
+            <DetailRow label="Jurisdiction">
+              {p.jurisdiction?.toUpperCase() ?? '—'}
+            </DetailRow>
+            <DetailRow label="Added">{fmtDate(p.created_at)}</DetailRow>
+            <DetailRow label="Last updated">{fmtRelTime(p.updated_at)}</DetailRow>
+          </Panel>
+
+          {/* Notes */}
+          <Panel title="Notes">
+            {editingNotes ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <textarea
+                  value={noteDraft}
+                  onChange={e => setNoteDraft(e.target.value)}
+                  rows={5}
+                  style={{
+                    width: '100%', resize: 'vertical', fontSize: 13,
+                    background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                    borderRadius: 6, padding: '8px 10px', color: 'var(--text-primary)',
+                    boxSizing: 'border-box',
+                  }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-primary btn-sm" onClick={handleSaveNotes} disabled={update.isPending}>
+                    Save
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingNotes(false)}>Cancel</button>
+                </div>
+              </div>
+            ) : (
+              <div>
+                {p.notes ? (
+                  <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    {p.notes}
+                  </p>
+                ) : (
+                  <p style={{ fontSize: 13, color: 'var(--text-tertiary)', margin: 0, fontStyle: 'italic' }}>No notes</p>
+                )}
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ marginTop: 10, paddingLeft: 0 }}
+                  onClick={() => { setNoteDraft(p.notes ?? ''); setEditingNotes(true); }}
+                >
+                  {p.notes ? 'Edit notes' : '+ Add notes'}
+                </button>
+              </div>
+            )}
+          </Panel>
+        </div>
+      </div>
+
+      {/* Convert confirm modal */}
+      <ConfirmModal
+        isOpen={convertConfirm}
+        title="Convert to Account"
+        message={`Create an Account record for "${p.firm_name}" and mark this prospect as converted?`}
+        confirmLabel="Convert"
+        confirmVariant="warning"
+        onConfirm={handleConvert}
+        onCancel={() => setConvertConfirm(false)}
+        loading={convert.isPending}
+      />
+    </Layout>
+  );
+}

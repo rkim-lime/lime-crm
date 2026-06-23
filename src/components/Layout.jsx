@@ -23,10 +23,11 @@ const STATIC_NAV_SECTIONS = [
   {
     label: 'Records',
     items: [
-      { to: '/leads',    label: 'Leads',    icon: '◈', prefix: true },
-      { to: '/contacts', label: 'Contacts', icon: '◯', prefix: true },
-      { to: '/accounts', label: 'Accounts', icon: '⬜', prefix: true },
-      { to: '/deals',    label: 'Deals',    icon: '◎', prefix: true },
+      { to: '/prospects', label: 'Prospects', icon: '◆', prefix: true },
+      { to: '/leads',     label: 'Leads',     icon: '◈', prefix: true },
+      { to: '/contacts',  label: 'Contacts',  icon: '◯', prefix: true },
+      { to: '/accounts',  label: 'Accounts',  icon: '⬜', prefix: true },
+      { to: '/deals',     label: 'Deals',     icon: '◎', prefix: true },
     ],
   },
   {
