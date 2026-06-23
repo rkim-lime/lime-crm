@@ -71,3 +71,29 @@ export function inferSegment(firmName) {
 
   return 'hedge_fund'; // default for institutional 13F filers
 }
+
+/**
+ * Check whether a prospect passes the ICP thresholds loaded from
+ * icp_filter_config. Null numeric signals are treated as 0.
+ * Returns true if icpConfig is null/undefined (no config = open ICP).
+ */
+export function computePassesICP(prospect, icpConfig) {
+  if (!icpConfig) return true;
+
+  const aum       = prospect.estimated_aum_usd      ?? 0;
+  const turnover  = prospect.portfolio_turnover_pct  ?? 0;
+  const positions = prospect.position_count          ?? 0;
+  const segment   = prospect.inferred_segment        ?? '';
+
+  const excludedSegments = icpConfig.excluded_segments  ?? [];
+  const minAum           = icpConfig.min_aum_usd        ?? 0;
+  const minTurnover      = icpConfig.min_turnover_pct   ?? 0;
+  const minPositions     = icpConfig.min_position_count ?? 0;
+
+  if (aum       < minAum)                    return false;
+  if (turnover  < minTurnover)               return false;
+  if (positions < minPositions)              return false;
+  if (excludedSegments.includes(segment))    return false;
+
+  return true;
+}
