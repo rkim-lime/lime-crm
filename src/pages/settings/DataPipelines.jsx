@@ -11,6 +11,7 @@ import {
   useJobRun,
   useTriggerJobRun,
   useCancelJobRun,
+  useResetJobRun,
   useDeleteJobDefinition,
   useUpdateJobDefinition,
 } from '../../hooks/useJobs';
@@ -26,6 +27,16 @@ function fmtDuration(run) {
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
   return `${mins}m ${secs % 60}s`;
+}
+
+// claimed_at is refreshed every 30s by the worker heartbeat; >90s of silence = dead worker
+const STALE_RUNNING_MS = 90_000;
+function isRunStuck(run) {
+  return (
+    run.status === 'running' &&
+    run.claimed_at != null &&
+    Date.now() - new Date(run.claimed_at).getTime() > STALE_RUNNING_MS
+  );
 }
 
 function fmtRunStats(stats) {
@@ -212,7 +223,7 @@ function JobDefinitionCard({ def, canWrite, isAdmin, isTriggering, onRunNow, onE
 
 // ── Run history table ─────────────────────────────────────────────────────────
 
-function RunTable({ runs, canWrite, onView, onCancel }) {
+function RunTable({ runs, canWrite, onView, onCancel, onReset }) {
   if (!runs.length) {
     return <EmptyState icon="○" text="No runs yet — click Run Now on a job definition to queue one" />;
   }
@@ -251,6 +262,16 @@ function RunTable({ runs, canWrite, onView, onCancel }) {
                       Cancel
                     </button>
                   )}
+                  {canWrite && isRunStuck(run) && (
+                    <button
+                      className="btn btn-sm"
+                      title="Worker appears dead — reset to re-queue"
+                      style={{ color: '#d97706', border: '1px solid #fde68a', background: '#fffbeb' }}
+                      onClick={() => onReset(run.id)}
+                    >
+                      Reset
+                    </button>
+                  )}
                 </div>
               </td>
             </tr>
@@ -266,6 +287,7 @@ function RunTable({ runs, canWrite, onView, onCancel }) {
 function RunDetailPanel({ runId, onClose }) {
   const runQ      = useJobRun(runId);
   const cancelRun = useCancelJobRun();
+  const resetRun  = useResetJobRun();
   const run       = runQ.data;
 
   return (
@@ -298,6 +320,17 @@ function RunDetailPanel({ runId, onClose }) {
                 disabled={cancelRun.isPending}
               >
                 Cancel
+              </button>
+            )}
+            {isRunStuck(run) && (
+              <button
+                className="btn btn-sm"
+                style={{ marginLeft: 'auto', color: '#d97706', border: '1px solid #fde68a', background: '#fffbeb' }}
+                onClick={() => resetRun.mutate(runId)}
+                disabled={resetRun.isPending}
+                title="Worker heartbeat lost — re-queue this run for any available worker"
+              >
+                {resetRun.isPending ? 'Resetting…' : 'Reset to queued'}
               </button>
             )}
           </div>
@@ -414,6 +447,7 @@ export default function DataPipelines() {
   const runs      = useJobRuns({ limit: 50 });
   const triggerRun = useTriggerJobRun();
   const cancelRun  = useCancelJobRun();
+  const resetRun   = useResetJobRun();
   const deleteDef  = useDeleteJobDefinition();
   const updateDef  = useUpdateJobDefinition();
 
@@ -423,6 +457,7 @@ export default function DataPipelines() {
     !r.started_at &&
     Date.now() - new Date(r.queued_at).getTime() > 60_000
   );
+  const stuckRunning = (runs.data ?? []).filter(isRunStuck);
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -497,6 +532,28 @@ export default function DataPipelines() {
             <code style={{ background: '#fef9c3', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>npm run worker</code>{' '}
             in the <strong>ingestion/</strong> directory to start the worker.
           </span>
+        </div>
+      )}
+
+      {/* Stuck-running warning */}
+      {stuckRunning.length > 0 && (
+        <div style={{
+          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 20,
+          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5,
+        }}>
+          <span>⚠</span>
+          <span style={{ flex: 1 }}>
+            A job appears stuck — the worker may have stopped. You can reset it to re-queue.
+          </span>
+          <button
+            className="btn btn-sm"
+            style={{ color: '#d97706', border: '1px solid #fde68a', background: '#fef9c3', whiteSpace: 'nowrap' }}
+            onClick={() => resetRun.mutate(stuckRunning[0].id)}
+            disabled={resetRun.isPending}
+          >
+            {resetRun.isPending ? 'Resetting…' : 'Reset job'}
+          </button>
         </div>
       )}
 
@@ -581,6 +638,7 @@ export default function DataPipelines() {
             canWrite={canWrite}
             onView={setViewingRunId}
             onCancel={id => cancelRun.mutate(id)}
+            onReset={id => resetRun.mutate(id)}
           />
         )}
       </div>

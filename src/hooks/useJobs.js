@@ -238,3 +238,21 @@ export function useCancelJobRun() {
     },
   });
 }
+
+export function useResetJobRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      const { error } = await supabase
+        .from('job_runs')
+        .update({ status: 'queued', claimed_by: null, claimed_at: null, started_at: null })
+        .eq('id', id)
+        .eq('status', 'running');
+      if (error) throw error;
+    },
+    onSuccess: (_data, id) => {
+      qc.invalidateQueries({ queryKey: ['job_runs'] });
+      qc.invalidateQueries({ queryKey: ['job_run', id] });
+    },
+  });
+}

@@ -5,7 +5,8 @@ import { ingest13F }   from '../pipeline/ingest13F.js';
 import { runScheduler } from './scheduler.js';
 
 const POLL_INTERVAL_MS      = parseInt(process.env.WORKER_POLL_MS ?? '10000', 10);
-const STALE_THRESHOLD_MS    = 60 * 60 * 1000; // 1 hour
+const STALE_THRESHOLD_MS    = 5 * 60 * 1000;  // 5 min — reliable with 30s heartbeat
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;       // 30s — updates claimed_at to signal liveness
 
 // Unique identity for this worker process (for claim tracking)
 const workerId = `${hostname()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -104,6 +105,15 @@ async function executeJob(run) {
     if (Date.now() - lastFlush >= 5000) await flushProgress(stats);
   };
 
+  // Heartbeat: refresh claimed_at every 30s so the UI/reaper can detect a dead worker
+  const heartbeat = setInterval(async () => {
+    await supabase
+      .from('job_runs')
+      .update({ claimed_at: new Date().toISOString() })
+      .eq('id', run.id)
+      .eq('status', 'running'); // no-op if job already finished
+  }, HEARTBEAT_INTERVAL_MS);
+
   try {
     const stats = await ingest13F({
       limit:      config.limit      ?? 50,
@@ -137,6 +147,8 @@ async function executeJob(run) {
       .eq('id', run.id);
 
     logger.error(`[${workerId}] Run ${run.id} failed — ${err.message}`);
+  } finally {
+    clearInterval(heartbeat);
   }
 
   currentRunId = null;
