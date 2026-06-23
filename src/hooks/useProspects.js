@@ -1,13 +1,20 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
 
+// Shared fields used by both list and detail queries.
+// Promotion columns are intentionally excluded here — they live only in
+// DETAIL_EXTRA so a missing migration only breaks the detail query, not the list.
 const FIELDS = `
   id, firm_name, cik, source, source_url, status, jurisdiction,
   estimated_aum_usd, position_count, portfolio_turnover_pct,
   equities_pct, options_present, inferred_segment,
   fit_score, fit_score_computed_at, notes, created_at, updated_at,
-  assigned_to, promoted_to_account_id, promoted_at, promoted_by,
+  assigned_to,
   assignee:assigned_to(id, full_name, email, avatar_url)
+`;
+
+const DETAIL_EXTRA = `
+  promoted_to_account_id, promoted_at, promoted_by
 `;
 
 export function useProspects(filters = {}) {
@@ -38,6 +45,7 @@ export function useProspect(id) {
         .from('prospects')
         .select(`
           ${FIELDS},
+          ${DETAIL_EXTRA},
           filings:prospect_filings(
             id, filing_type, accession_no, period_of_report,
             filed_at, total_value_usd, holding_count, source_url
@@ -50,7 +58,10 @@ export function useProspect(id) {
         .order('period_of_report', { referencedTable: 'prospect_filings', ascending: false })
         .order('computed_at', { referencedTable: 'prospect_fit_scores', ascending: false })
         .single();
-      if (error) throw error;
+      if (error) {
+        console.error('useProspect error:', error);
+        throw error;
+      }
       return data;
     },
     enabled: !!id,

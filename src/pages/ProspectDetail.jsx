@@ -117,6 +117,7 @@ export default function ProspectDetail() {
     );
   }
   if (prospect.error) {
+    console.error('ProspectDetail error:', prospect.error);
     return (
       <Layout title="Prospect">
         <div style={{ padding: 24 }}>
@@ -127,6 +128,19 @@ export default function ProspectDetail() {
   }
 
   const p = prospect.data;
+
+  // Guard against undefined data — can occur in React 18 Concurrent Mode
+  // between state transitions where isLoading flips before data is committed.
+  if (!p) {
+    return (
+      <Layout title="Prospect">
+        <div style={{ padding: 24 }}>
+          <div className="skeleton skeleton-text" style={{ width: 240, height: 24 }} />
+        </div>
+      </Layout>
+    );
+  }
+
   const filings = [...(p.filings ?? [])].sort(
     (a, b) => (b.period_of_report ?? '').localeCompare(a.period_of_report ?? '')
   );
