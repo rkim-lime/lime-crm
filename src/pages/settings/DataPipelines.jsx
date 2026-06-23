@@ -312,7 +312,7 @@ function RunDetailPanel({ runId, onClose }) {
               ['Started',  fmtDateTime(run.started_at)],
               ['Finished', fmtDateTime(run.finished_at)],
               ['Duration', fmtDuration(run)],
-              ['Worker',   run.worker_id ? run.worker_id.split('-').slice(0, 2).join('-') : '—'],
+              ['Worker',   run.claimed_by ? run.claimed_by.split('-').slice(0, 2).join('-') : '—'],
             ].map(([label, val]) => (
               <div key={label}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: 2 }}>

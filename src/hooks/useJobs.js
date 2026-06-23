@@ -13,7 +13,7 @@ const DEF_FIELDS = `
 const RUN_FIELDS = `
   id, job_definition_id, status, trigger_source, config_snapshot,
   queued_at, claimed_at, started_at, finished_at,
-  log, stats, error_message, worker_id, created_at,
+  log, stats, error_message, claimed_by, created_at,
   definition:job_definition_id(id, name, job_type)
 `;
 
