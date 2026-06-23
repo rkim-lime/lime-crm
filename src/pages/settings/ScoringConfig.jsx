@@ -10,19 +10,21 @@ import { useContacts } from '../../hooks/useContacts';
 import { useDeals } from '../../hooks/useDeals';
 import { useProspects, useProspect } from '../../hooks/useProspects';
 import { fmtRelTime, ErrorBanner } from '../shared';
+import { useICPConfig, useUpdateICPConfig } from '../../hooks/useDedup';
 
 const TAB_GROUPS = [
   { label: 'Enterprise & Pro', types: ['deal', 'account_health'] },
   { label: 'Individual',       types: ['lead', 'contact_health'] },
-  { label: 'Prospecting',      types: ['prospect_fit'] },
+  { label: 'Prospecting',      types: ['prospect_fit', 'icp_criteria'] },
 ];
-const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types);
+const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types).filter(t => t !== 'icp_criteria');
 const SCORE_LABELS = {
   deal:           'Deal Score',
   account_health: 'Account Health',
   lead:           'Lead Score',
   contact_health: 'Contact Health',
   prospect_fit:   'Prospect Fit',
+  icp_criteria:   'ICP Criteria',
 };
 
 const PROSPECT_CRITERION_LABELS = {
@@ -448,6 +450,165 @@ function CriteriaTable({ criteria, onChange }) {
   );
 }
 
+// ── ICP Criteria tab ──────────────────────────────────────────────────────────
+
+const ALL_SEGMENTS = [
+  { value: 'hedge_fund',    label: 'Hedge Fund'    },
+  { value: 'quant_fund',    label: 'Quant Fund'    },
+  { value: 'prop_trader',   label: 'Prop Trader'   },
+  { value: 'broker_dealer', label: 'Broker-Dealer' },
+  { value: 'pension',       label: 'Pension'       },
+  { value: 'insurance',     label: 'Insurance'     },
+  { value: 'family_office', label: 'Family Office' },
+  { value: 'retail_trader', label: 'Retail Trader' },
+];
+
+const ICP_LABEL = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: 5 };
+const ICP_HINT  = { fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 4 };
+
+function ICPCriteriaTab() {
+  const config = useICPConfig();
+  const update = useUpdateICPConfig();
+  const [minAum,       setMinAum]       = useState('');
+  const [minTurnover,  setMinTurnover]  = useState('');
+  const [minPositions, setMinPositions] = useState('');
+  const [excluded,     setExcluded]     = useState([]);
+  const [saved,        setSaved]        = useState(false);
+  const [err,          setErr]          = useState(null);
+
+  useEffect(() => {
+    if (!config.data) return;
+    const c = config.data;
+    setMinAum(c.min_aum_usd        != null ? String(c.min_aum_usd)        : '');
+    setMinTurnover(c.min_turnover_pct   != null ? String(c.min_turnover_pct)   : '');
+    setMinPositions(c.min_position_count != null ? String(c.min_position_count) : '');
+    setExcluded(c.excluded_segments ?? []);
+  }, [config.data]);
+
+  const toggleSeg = seg => setExcluded(p => p.includes(seg) ? p.filter(s => s !== seg) : [...p, seg]);
+
+  const fmtAUM = n => {
+    const v = Number(n);
+    if (!n || isNaN(v)) return null;
+    if (v >= 1e9) return `$${(v / 1e9).toFixed(1)}B`;
+    if (v >= 1e6) return `$${(v / 1e6).toFixed(0)}M`;
+    return `$${v.toLocaleString()}`;
+  };
+
+  const handleSave = async () => {
+    setErr(null);
+    try {
+      await update.mutateAsync({
+        min_aum_usd:        minAum       ? Number(minAum)       : null,
+        min_turnover_pct:   minTurnover  ? Number(minTurnover)  : null,
+        min_position_count: minPositions ? Number(minPositions) : null,
+        excluded_segments:  excluded,
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 4000);
+    } catch (e) { setErr(e.message); }
+  };
+
+  if (config.isLoading) return (
+    <div>
+      {[240, 180, 180, 220].map((w, i) => (
+        <div key={i} className="skeleton skeleton-text" style={{ width: w, marginBottom: 14 }} />
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ maxWidth: 540 }}>
+      <div style={{
+        padding: '10px 14px', background: '#eff6ff', border: '1px solid #bfdbfe',
+        borderRadius: 6, fontSize: 13, color: '#1e40af', lineHeight: 1.5, marginBottom: 20,
+      }}>
+        <strong>ICP Criteria</strong> are hard filters that determine which prospects qualify to be shown.
+        Separate from <strong>Prospect Fit</strong> scoring, which ranks the prospects that qualify.
+      </div>
+
+      {config.error && <ErrorBanner message={config.error.message} onRetry={config.refetch} />}
+      {err && <div className="error-state" style={{ marginBottom: 16 }}>{err}</div>}
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={ICP_LABEL}>Minimum AUM (USD)</label>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <input
+            className="form-input" type="number" min={0} step={1_000_000}
+            value={minAum} onChange={e => setMinAum(e.target.value)}
+            placeholder="e.g. 100000000" style={{ flex: 1 }}
+          />
+          {fmtAUM(minAum) && (
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              = {fmtAUM(minAum)}
+            </span>
+          )}
+        </div>
+        <div style={ICP_HINT}>Prospects below this AUM will have passes_icp = false</div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={ICP_LABEL}>Minimum Portfolio Turnover (%)</label>
+        <input
+          className="form-input" type="number" min={0} max={100} step={1}
+          value={minTurnover} onChange={e => setMinTurnover(e.target.value)}
+          placeholder="e.g. 10 for 10%"
+        />
+        <div style={ICP_HINT}>Prospects with lower turnover will have passes_icp = false</div>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={ICP_LABEL}>Minimum Position Count</label>
+        <input
+          className="form-input" type="number" min={0} step={1}
+          value={minPositions} onChange={e => setMinPositions(e.target.value)}
+          placeholder="e.g. 5"
+        />
+        <div style={ICP_HINT}>Prospects with fewer positions will have passes_icp = false</div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <label style={ICP_LABEL}>Excluded Segments</label>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {ALL_SEGMENTS.map(seg => {
+            const active = excluded.includes(seg.value);
+            return (
+              <button
+                key={seg.value} type="button" onClick={() => toggleSeg(seg.value)}
+                style={{
+                  padding: '5px 12px', borderRadius: 20, fontSize: 12.5, cursor: 'pointer',
+                  border: active ? '1px solid var(--red)' : '1px solid var(--border)',
+                  background: active ? '#fef2f2' : 'var(--bg-secondary)',
+                  color:      active ? 'var(--red)' : 'var(--text-secondary)',
+                  fontWeight: active ? 600 : 400,
+                }}
+              >
+                {active ? '✕ ' : ''}{seg.label}
+              </button>
+            );
+          })}
+        </div>
+        <div style={ICP_HINT}>Prospects in these segments will have passes_icp = false</div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, paddingTop: 8, borderTop: '1px solid var(--border-subtle)', marginBottom: 16 }}>
+        <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={update.isPending}>
+          {update.isPending ? 'Saving…' : 'Save Criteria'}
+        </button>
+        {saved && <span style={{ fontSize: 13, color: 'var(--green)', fontWeight: 500 }}>✓ Saved</span>}
+      </div>
+
+      <div style={{
+        padding: '10px 14px', background: '#fffbeb', border: '1px solid #fde68a',
+        borderRadius: 6, fontSize: 13, color: '#92400e', lineHeight: 1.5,
+      }}>
+        <strong>Note:</strong> Changes apply to prospects ingested <em>after</em> saving.
+        Existing prospects keep their current ICP status until re-ingested.
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function ScoringConfig() {
@@ -546,7 +707,9 @@ export default function ScoringConfig() {
         </div>
       </div>
 
-      {config.isLoading ? (
+      {activeTab === 'icp_criteria' ? (
+        <ICPCriteriaTab />
+      ) : config.isLoading ? (
         <div className="skeleton skeleton-text" style={{ width: '60%', margin: '20px 0' }} />
       ) : (
         <>

@@ -30,7 +30,6 @@ import UpsellOpportunities  from './pages/reports/UpsellOpportunities';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
 import DataPipelines from './pages/settings/DataPipelines';
-import ICPConfig     from './pages/settings/ICPConfig';
 import DedupQueue    from './pages/DedupQueue';
 import MyProfile     from './pages/MyProfile';
 import AcceptInvite  from './pages/AcceptInvite';
@@ -110,15 +109,7 @@ export default function App() {
                 </ProtectedRoute>
               }
             />
-            <Route path="/settings/icp"
-              element={
-                <ProtectedRoute>
-                  <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
-                    <ICPConfig />
-                  </RoleGate>
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/settings/icp" element={<Navigate to="/settings/scoring" replace />} />
             <Route path="/settings/pipelines"
               element={
                 <ProtectedRoute>

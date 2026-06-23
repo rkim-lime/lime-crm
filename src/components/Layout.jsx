@@ -51,8 +51,7 @@ const BASE_SETTINGS_ITEMS = [
 const PIPELINES_SETTINGS_ITEM = { to: '/settings/pipelines', label: 'Data Pipelines', icon: '▶' };
 
 const ADMIN_SETTINGS_ITEMS = [
-  { to: '/settings/users',   label: 'Users',        icon: '◉' },
-  { to: '/settings/icp',     label: 'ICP Criteria', icon: '⊙' },
+  { to: '/settings/users', label: 'Users', icon: '◉' },
 ];
 
 function Icon({ ch }) {
