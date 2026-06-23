@@ -5,14 +5,14 @@ const QUEUE_FIELDS = `
   id, status, match_type, similarity, matched_name,
   prospect_id, matched_prospect_id, matched_account_id,
   resolved_at, resolved_by, created_at,
-  prospect:prospect_id(
+  prospect:prospects!dedup_queue_prospect_id_fkey(
     id, firm_name, estimated_aum_usd, position_count, portfolio_turnover_pct,
     equities_pct, options_present, fit_score, cik, status, inferred_segment, source
   ),
-  matched_prospect:matched_prospect_id(
+  matched_prospect:prospects!dedup_queue_matched_prospect_id_fkey(
     id, firm_name, estimated_aum_usd, fit_score, cik, status
   ),
-  matched_account:matched_account_id(
+  matched_account:accounts!dedup_queue_matched_account_id_fkey(
     id, name, aum_usd, tier, status, cik
   )
 `;
