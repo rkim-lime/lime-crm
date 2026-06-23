@@ -30,6 +30,8 @@ import UpsellOpportunities  from './pages/reports/UpsellOpportunities';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
 import DataPipelines from './pages/settings/DataPipelines';
+import ICPConfig     from './pages/settings/ICPConfig';
+import DedupQueue    from './pages/DedupQueue';
 import MyProfile     from './pages/MyProfile';
 import AcceptInvite  from './pages/AcceptInvite';
 import Playbook      from './pages/Playbook';
@@ -68,6 +70,15 @@ export default function App() {
             <Route path="/leads"            element={<ProtectedRoute><Leads /></ProtectedRoute>} />
             <Route path="/leads/:id"        element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
             <Route path="/prospects"        element={<ProtectedRoute><Prospects /></ProtectedRoute>} />
+            <Route path="/prospects/dedup"
+              element={
+                <ProtectedRoute>
+                  <RoleGate allow={['admin', 'sales', 'operations']} fallback={<Navigate to="/prospects" replace />}>
+                    <DedupQueue />
+                  </RoleGate>
+                </ProtectedRoute>
+              }
+            />
             <Route path="/prospects/:id"    element={<ProtectedRoute><ProspectDetail /></ProtectedRoute>} />
             <Route path="/funnel"           element={<ProtectedRoute><Funnel /></ProtectedRoute>} />
             <Route path="/reports/lead-hygiene" element={<ProtectedRoute><LeadHygiene /></ProtectedRoute>} />
@@ -95,6 +106,15 @@ export default function App() {
                 <ProtectedRoute>
                   <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
                     <Users />
+                  </RoleGate>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/settings/icp"
+              element={
+                <ProtectedRoute>
+                  <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
+                    <ICPConfig />
                   </RoleGate>
                 </ProtectedRoute>
               }

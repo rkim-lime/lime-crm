@@ -8,7 +8,8 @@ const FIELDS = `
   id, firm_name, cik, source, source_url, status, jurisdiction,
   estimated_aum_usd, position_count, portfolio_turnover_pct,
   equities_pct, options_present, inferred_segment,
-  fit_score, fit_score_computed_at, notes, created_at, updated_at,
+  fit_score, fit_score_computed_at, passes_icp, is_audit_only,
+  notes, created_at, updated_at,
   assigned_to,
   assignee:assigned_to(id, full_name, email, avatar_url)
 `;
@@ -25,11 +26,19 @@ export function useProspects(filters = {}) {
         .from('prospects')
         .select(FIELDS)
         .order('fit_score', { ascending: false, nullsFirst: false });
-      if (filters.status)  q = q.eq('status', filters.status);
-      if (filters.source)  q = q.eq('source', filters.source);
-      if (filters.segment) q = q.eq('inferred_segment', filters.segment);
+
+      // Always exclude audit-only records (CIK-matched account shadows)
+      q = q.eq('is_audit_only', false);
+
+      // ICP filter — default ON; caller must explicitly pass icpOnly:false to disable
+      const icpOnly = filters.icpOnly !== undefined ? filters.icpOnly : true;
+      if (icpOnly) q = q.eq('passes_icp', true);
+
+      if (filters.status)   q = q.eq('status', filters.status);
+      if (filters.source)   q = q.eq('source', filters.source);
+      if (filters.segment)  q = q.eq('inferred_segment', filters.segment);
       if (filters.assignee) q = q.eq('assigned_to', filters.assignee);
-      if (filters.search)  q = q.ilike('firm_name', `%${filters.search}%`);
+      if (filters.search)   q = q.ilike('firm_name', `%${filters.search}%`);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];

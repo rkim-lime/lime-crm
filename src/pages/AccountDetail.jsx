@@ -28,6 +28,14 @@ function fmtOrderRouting(arr) {
   return label ?? null;
 }
 
+function fmtSecAUM(n) {
+  if (n == null) return null;
+  if (n >= 1e9)  return `$${(n / 1e9).toFixed(1)}B`;
+  if (n >= 1e6)  return `$${(n / 1e6).toFixed(0)}M`;
+  if (n >= 1e3)  return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${n}`;
+}
+
 export default function AccountDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -201,6 +209,74 @@ export default function AccountDetail() {
                 )}
               </Field>
             </div>
+
+            {/* SEC Intelligence — shown when account has CIK or SEC signal data */}
+            {(a.cik || a.sec_signals_updated_at) && (
+              <div className="card card-body">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                  <span style={{ fontSize: 15 }}>📊</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)' }}>
+                      SEC Intelligence
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>Derived from regulatory filings</div>
+                  </div>
+                </div>
+
+                {a.sec_signals_updated_at ? (
+                  <>
+                    {a.cik && (
+                      <div className="detail-field">
+                        <div className="detail-label">CIK</div>
+                        <div className="detail-value">
+                          <a
+                            href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${a.cik}`}
+                            target="_blank" rel="noreferrer"
+                            style={{ color: 'var(--accent)', fontFamily: 'monospace', fontSize: 12.5 }}
+                          >
+                            {a.cik}
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    <Field label="Estimated AUM"       value={a.sec_estimated_aum_usd      != null ? fmtSecAUM(a.sec_estimated_aum_usd)                      : null} />
+                    <Field label="Position count"      value={a.sec_position_count          != null ? a.sec_position_count.toLocaleString()                    : null} />
+                    <Field label="Portfolio turnover"  value={a.sec_portfolio_turnover_pct  != null ? `${a.sec_portfolio_turnover_pct.toFixed(1)}%`             : null} />
+                    <Field label="Equity concentration"value={a.sec_equities_pct            != null ? `${a.sec_equities_pct.toFixed(1)}%`                      : null} />
+                    {a.sec_options_present != null && (
+                      <div className="detail-field">
+                        <div className="detail-label">Options activity</div>
+                        <div className="detail-value">
+                          <span style={{
+                            fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
+                            background: a.sec_options_present ? '#f0fdf4' : '#f8fafc',
+                            color:      a.sec_options_present ? '#16a34a' : '#64748b',
+                          }}>
+                            {a.sec_options_present ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-subtle)', fontSize: 11.5, color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+                      Signals updated {fmtRelTime(a.sec_signals_updated_at)} · Auto-updated when this firm appears in new SEC filings
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: 13.5 }}>
+                    {a.cik && (
+                      <div style={{ marginBottom: 8, fontSize: 12.5 }}>
+                        CIK: <a
+                          href={`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${a.cik}`}
+                          target="_blank" rel="noreferrer"
+                          style={{ color: 'var(--accent)', fontFamily: 'monospace' }}
+                        >{a.cik}</a>
+                      </div>
+                    )}
+                    Awaiting next ingestion run
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="card card-body">
               <div className="detail-label" style={{ marginBottom: 8 }}>Infrastructure</div>

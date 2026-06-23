@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useProspects } from '../hooks/useProspects';
+import { useDedupQueueCount } from '../hooks/useDedup';
 import { useProfiles } from '../hooks/useDashboard';
 import { TableSkeleton, ErrorBanner, fmtRelTime } from './shared';
 
@@ -82,20 +83,25 @@ function StatusDot({ status }) {
 
 export default function Prospects() {
   const navigate = useNavigate();
-  const [statusFilter,  setStatus]  = useState('');
-  const [sourceFilter,  setSource]  = useState('sec_13f');
-  const [segmentFilter, setSegment] = useState('');
+  const [statusFilter,   setStatus]   = useState('');
+  const [sourceFilter,   setSource]   = useState('sec_13f');
+  const [segmentFilter,  setSegment]  = useState('');
   const [assigneeFilter, setAssignee] = useState('');
-  const [search, setSearch] = useState('');
+  const [search,         setSearch]   = useState('');
+  const [icpOnly,        setIcpOnly]  = useState(true);
 
-  const filters = {};
-  if (statusFilter)   filters.status   = statusFilter;
-  if (sourceFilter)   filters.source   = sourceFilter;
-  if (segmentFilter)  filters.segment  = segmentFilter;
-  if (assigneeFilter) filters.assignee = assigneeFilter;
-  if (search)         filters.search   = search;
+  const baseFilters = {};
+  if (statusFilter)   baseFilters.status   = statusFilter;
+  if (sourceFilter)   baseFilters.source   = sourceFilter;
+  if (segmentFilter)  baseFilters.segment  = segmentFilter;
+  if (assigneeFilter) baseFilters.assignee = assigneeFilter;
+  if (search)         baseFilters.search   = search;
+
+  const filters = { ...baseFilters, icpOnly };
 
   const { data, isLoading, error, refetch } = useProspects(filters);
+  const allProspects = useProspects({ ...baseFilters, icpOnly: false });
+  const { data: dedupCount = 0 } = useDedupQueueCount();
   const profiles = useProfiles();
 
   return (
@@ -123,9 +129,38 @@ export default function Prospects() {
             <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
           ))}
         </select>
+
+        {/* ICP filter toggle */}
+        <label
+          title="ICP-qualified firms meet your minimum AUM, turnover, and segment criteria. Configure thresholds in Settings → ICP Criteria."
+          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          <input type="checkbox" checked={icpOnly} onChange={e => setIcpOnly(e.target.checked)} />
+          ICP only <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>ⓘ</span>
+        </label>
+
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', alignSelf: 'center' }}>
-          {data ? `${data.length} prospect${data.length !== 1 ? 's' : ''}` : ''}
+
+        {/* Dedup link */}
+        {dedupCount > 0 && (
+          <button
+            className="btn btn-sm"
+            style={{ color: '#d97706', border: '1px solid #fde68a', background: '#fffbeb', whiteSpace: 'nowrap' }}
+            onClick={() => navigate('/prospects/dedup')}
+          >
+            ⚠ Duplicate Review ({dedupCount})
+          </button>
+        )}
+
+        {/* Count display */}
+        <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', alignSelf: 'center', whiteSpace: 'nowrap' }}>
+          {data && allProspects.data
+            ? icpOnly
+              ? `${data.length} of ${allProspects.data.length} prospects`
+              : `${data.length} prospect${data.length !== 1 ? 's' : ''}`
+            : data
+            ? `${data.length} prospect${data.length !== 1 ? 's' : ''}`
+            : ''}
         </span>
       </div>
 
@@ -158,7 +193,24 @@ export default function Prospects() {
                       <div className="table-sub">CIK {p.cik}</div>
                     )}
                   </td>
-                  <td><StatusDot status={p.status} /></td>
+                  <td>
+                    <StatusDot status={p.status} />
+                    {p.status === 'possible_duplicate' && (
+                      <div style={{ marginTop: 3 }}>
+                        <button
+                          title="This firm may already exist — review in Duplicate Review"
+                          onClick={e => { e.stopPropagation(); navigate('/prospects/dedup'); }}
+                          style={{
+                            background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 3,
+                            color: '#d97706', fontSize: 10.5, fontWeight: 700,
+                            cursor: 'pointer', padding: '1px 6px', lineHeight: '16px',
+                          }}
+                        >
+                          ⚠ Duplicate?
+                        </button>
+                      </div>
+                    )}
+                  </td>
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
                     {p.source === 'sec_13f' ? 'SEC 13F' : p.source?.replace(/_/g, ' ') ?? '—'}
                   </td>

@@ -3,6 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { usePendingUsers } from '../hooks/usePendingUsers';
 import { useOwnershipHygieneCount } from '../hooks/useOwnershipHygiene';
+import { useDedupQueueCount } from '../hooks/useDedup';
 
 const STATIC_NAV_SECTIONS = [
   {
@@ -23,11 +24,12 @@ const STATIC_NAV_SECTIONS = [
   {
     label: 'Records',
     items: [
-      { to: '/prospects', label: 'Prospects', icon: '◆', prefix: true },
-      { to: '/leads',     label: 'Leads',     icon: '◈', prefix: true },
-      { to: '/contacts',  label: 'Contacts',  icon: '◯', prefix: true },
-      { to: '/accounts',  label: 'Accounts',  icon: '⬜', prefix: true },
-      { to: '/deals',     label: 'Deals',     icon: '◎', prefix: true },
+      { to: '/prospects',       label: 'Prospects',         icon: '◆', prefix: true },
+      { to: '/leads',           label: 'Leads',             icon: '◈', prefix: true },
+      { to: '/contacts',        label: 'Contacts',          icon: '◯', prefix: true },
+      { to: '/accounts',        label: 'Accounts',          icon: '⬜', prefix: true },
+      { to: '/deals',           label: 'Deals',             icon: '◎', prefix: true },
+      { to: '/prospects/dedup', label: 'Duplicate Review',  icon: '≈',  dedupBadge: true },
     ],
   },
   {
@@ -49,7 +51,8 @@ const BASE_SETTINGS_ITEMS = [
 const PIPELINES_SETTINGS_ITEM = { to: '/settings/pipelines', label: 'Data Pipelines', icon: '▶' };
 
 const ADMIN_SETTINGS_ITEMS = [
-  { to: '/settings/users',   label: 'Users',          icon: '◉' },
+  { to: '/settings/users',   label: 'Users',        icon: '◉' },
+  { to: '/settings/icp',     label: 'ICP Criteria', icon: '⊙' },
 ];
 
 function Icon({ ch }) {
@@ -71,9 +74,11 @@ export default function Layout({ title, children }) {
   const navigate  = useNavigate();
   const { pathname } = useLocation();
   const { count: pendingCount } = usePendingUsers();
-  const isAdmin       = role === 'admin';
+  const isAdmin         = role === 'admin';
   const canSeePipelines = ['admin', 'sales', 'operations'].includes(role);
+  const canSeeDedupQueue = ['admin', 'sales', 'operations'].includes(role);
   const hygiene = useOwnershipHygieneCount();
+  const { data: dedupCount = 0 } = useDedupQueueCount();
   const hygieneCount = hygiene.data ?? 0;
 
   const [dismissedCount, setDismissedCount] = useState(
@@ -110,16 +115,27 @@ export default function Layout({ title, children }) {
           {STATIC_NAV_SECTIONS.map(section => (
             <div key={section.label}>
               <div className="sidebar-section-label">{section.label}</div>
-              {section.items.map(({ to, label, icon, prefix }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  className={() => `sidebar-item${navActive(to, pathname, prefix) ? ' active' : ''}`}
-                >
-                  <Icon ch={icon} />
-                  {label}
-                </NavLink>
-              ))}
+              {section.items.map(({ to, label, icon, prefix, dedupBadge }) => {
+                if (dedupBadge && !canSeeDedupQueue) return null;
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    className={() => `sidebar-item${navActive(to, pathname, prefix) ? ' active' : ''}`}
+                  >
+                    <Icon ch={icon} />
+                    {label}
+                    {dedupBadge && dedupCount > 0 && (
+                      <span style={{
+                        marginLeft: 'auto', background: '#d97706', color: '#fff',
+                        borderRadius: 10, fontSize: 10, fontWeight: 700, padding: '0px 5px', lineHeight: '16px',
+                      }}>
+                        {dedupCount}
+                      </span>
+                    )}
+                  </NavLink>
+                );
+              })}
             </div>
           ))}
 
