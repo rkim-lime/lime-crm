@@ -111,15 +111,23 @@ export function useConvertProspectToAccount() {
       const { data: account, error: accountErr } = await supabase
         .from('accounts')
         .insert({
-          name:                    prospect.firm_name,
+          name:                        prospect.firm_name,
           tier,
-          segment:                 prospect.inferred_segment ?? null,
-          aum_usd:                 prospect.estimated_aum_usd ?? null,
-          jurisdiction:            prospect.jurisdiction ?? null,
-          status:                  'prospect',
-          relevant_asset_classes:  relevantAssetClasses,
-          sales_owner_id:          prospect.assigned_to ?? user?.id ?? null,
-          notes:                   prospect.notes ?? null,
+          segment:                     prospect.inferred_segment ?? null,
+          aum_usd:                     prospect.estimated_aum_usd ?? null,
+          jurisdiction:                prospect.jurisdiction ?? null,
+          status:                      'prospect',
+          relevant_asset_classes:      relevantAssetClasses,
+          sales_owner_id:              prospect.assigned_to ?? user?.id ?? null,
+          notes:                       prospect.notes ?? null,
+          // SEC provenance — critical for ingestion dedup (CIK match)
+          cik:                         prospect.cik ?? null,
+          sec_estimated_aum_usd:       prospect.estimated_aum_usd ?? null,
+          sec_position_count:          prospect.position_count ?? null,
+          sec_portfolio_turnover_pct:  prospect.portfolio_turnover_pct ?? null,
+          sec_equities_pct:            prospect.equities_pct ?? null,
+          sec_options_present:         prospect.options_present ?? null,
+          sec_signals_updated_at:      new Date().toISOString(),
         })
         .select('id, name')
         .single();
