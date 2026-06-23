@@ -8,11 +8,13 @@ import { useLeads } from '../../hooks/useLeads';
 import { useAccounts } from '../../hooks/useAccounts';
 import { useContacts } from '../../hooks/useContacts';
 import { useDeals } from '../../hooks/useDeals';
+import { useProspects, useProspect } from '../../hooks/useProspects';
 import { fmtRelTime, ErrorBanner } from '../shared';
 
 const TAB_GROUPS = [
   { label: 'Enterprise & Pro', types: ['deal', 'account_health'] },
   { label: 'Individual',       types: ['lead', 'contact_health'] },
+  { label: 'Prospecting',      types: ['prospect_fit'] },
 ];
 const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types);
 const SCORE_LABELS = {
@@ -20,6 +22,16 @@ const SCORE_LABELS = {
   account_health: 'Account Health',
   lead:           'Lead Score',
   contact_health: 'Contact Health',
+  prospect_fit:   'Prospect Fit',
+};
+
+const PROSPECT_CRITERION_LABELS = {
+  aum_tier:             'AUM Tier',
+  portfolio_turnover:   'Portfolio Turnover',
+  equity_concentration: 'Equity Concentration',
+  options_present:      'Options Activity',
+  position_count:       'Position Count',
+  filer_type:           'Filer Type',
 };
 
 // ── Weight total bar ──────────────────────────────────────────────────────────
@@ -246,6 +258,124 @@ function LivePreview({ scoreType, localCriteria }) {
   );
 }
 
+// ── Prospect Fit saved modal ─────────────────────────────────────────────────
+
+function ProspectFitSavedModal({ onClose }) {
+  return createPortal(
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-dialog" style={{ width: 440, maxWidth: 'calc(100vw - 32px)' }} onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <span className="modal-title">✓ Weights saved</span>
+          <button className="modal-close" onClick={onClose} aria-label="Close">✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.6, margin: 0 }}>
+            Prospect fit weights saved. New scores will apply on the next ingestion run.
+          </p>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ── Prospect Fit preview panel ────────────────────────────────────────────────
+
+function ProspectFitPreview() {
+  const prospectsQ  = useProspects({});
+  const topProspect = (prospectsQ.data ?? [])[0] ?? null;
+  const detailQ     = useProspect(topProspect?.id);
+
+  if (prospectsQ.isLoading) {
+    return (
+      <div className="card" style={{ padding: '16px 20px', marginTop: 20 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 12 }}>Sample Prospect</div>
+        <div className="skeleton skeleton-text" style={{ width: '60%' }} />
+      </div>
+    );
+  }
+
+  if (!topProspect) {
+    return (
+      <div className="card" style={{ padding: '16px 20px', marginTop: 20 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 8 }}>Sample Prospect</div>
+        <div style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+          No prospects ingested yet — run the ingestion service to see scoring in action.
+        </div>
+      </div>
+    );
+  }
+
+  const latestScore = (detailQ.data?.scores ?? [])[0];
+  const breakdown   = latestScore?.breakdown;
+  const score       = topProspect.fit_score;
+  const scoreColor  = score >= 75 ? 'var(--green)' : score >= 50 ? 'var(--yellow)' : 'var(--red)';
+
+  return (
+    <div className="card" style={{ padding: '16px 20px', marginTop: 20 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 600, marginBottom: 12 }}>Sample Prospect (highest fit score)</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600 }}>{topProspect.firm_name}</div>
+        {score != null && (
+          <div style={{ fontSize: 24, fontWeight: 800, color: scoreColor }}>{score}</div>
+        )}
+        <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+          stored — computed by ingestion service
+        </div>
+      </div>
+
+      {score != null && (
+        <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden', marginBottom: 14 }}>
+          <div style={{ height: '100%', background: scoreColor, width: `${score}%`, borderRadius: 3 }} />
+        </div>
+      )}
+
+      {detailQ.isLoading && (
+        <div className="skeleton skeleton-text" style={{ width: '80%' }} />
+      )}
+
+      {!detailQ.isLoading && breakdown && typeof breakdown === 'object' && Object.keys(breakdown).length > 0 ? (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <th style={{ textAlign: 'left', padding: '4px 0', color: 'var(--text-tertiary)', fontWeight: 500 }}>Criterion</th>
+              <th style={{ textAlign: 'right', padding: '4px 8px', color: 'var(--text-tertiary)', fontWeight: 500 }}>Points</th>
+              <th style={{ textAlign: 'right', padding: '4px 0', color: 'var(--text-tertiary)', fontWeight: 500 }}>Weight</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Object.entries(breakdown).map(([key, val]) => {
+              if (!val || typeof val !== 'object') return null;
+              const { points = 0, weight = 0 } = val;
+              const label = PROSPECT_CRITERION_LABELS[key] ?? key.replace(/_/g, ' ');
+              return (
+                <tr key={key} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                  <td style={{ padding: '5px 0', color: 'var(--text-primary)' }}>{label}</td>
+                  <td style={{ textAlign: 'right', padding: '5px 8px', fontWeight: 600, color: points > 0 ? 'var(--text-primary)' : 'var(--text-tertiary)' }}>
+                    {points}
+                  </td>
+                  <td style={{ textAlign: 'right', padding: '5px 0', color: 'var(--text-tertiary)' }}>
+                    {weight}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      ) : (
+        !detailQ.isLoading && (
+          <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>
+            No score breakdown available for this prospect.
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // ── Criteria table ────────────────────────────────────────────────────────────
 
 function CriteriaTable({ criteria, onChange }) {
@@ -420,6 +550,27 @@ export default function ScoringConfig() {
         <div className="skeleton skeleton-text" style={{ width: '60%', margin: '20px 0' }} />
       ) : (
         <>
+          {/* Prospect Fit tab info note + subtitle */}
+          {activeTab === 'prospect_fit' && (
+            <div style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '0 0 10px' }}>
+                Firmographic ICP fit scoring for ingested SEC prospects (applied during ingestion)
+              </p>
+              <div style={{
+                display: 'flex', alignItems: 'flex-start', gap: 8,
+                padding: '10px 14px', background: '#eff6ff',
+                border: '1px solid #bfdbfe', borderRadius: 6,
+                fontSize: 13, color: '#1e40af', lineHeight: 1.5,
+              }}>
+                <span style={{ flexShrink: 0 }}>ℹ</span>
+                <span>
+                  These weights are applied by the ingestion service when prospects are imported from
+                  SEC filings. Changes take effect on the next ingestion run, not retroactively.
+                </span>
+              </div>
+            </div>
+          )}
+
           <CriteriaTable
             criteria={typeCriteria}
             onChange={rows => setLocalCriteria(p => ({ ...p, [activeTab]: rows }))}
@@ -447,11 +598,17 @@ export default function ScoringConfig() {
             </div>
           </div>
 
-          <LivePreview scoreType={activeTab} localCriteria={typeCriteria} />
+          {activeTab === 'prospect_fit'
+            ? <ProspectFitPreview />
+            : <LivePreview scoreType={activeTab} localCriteria={typeCriteria} />
+          }
         </>
       )}
 
-      {showModal && (
+      {showModal && activeTab === 'prospect_fit' && (
+        <ProspectFitSavedModal onClose={() => setShowModal(false)} />
+      )}
+      {showModal && activeTab !== 'prospect_fit' && (
         <RecalculationModal
           scoreType={activeTab}
           recordCount={recordCount}

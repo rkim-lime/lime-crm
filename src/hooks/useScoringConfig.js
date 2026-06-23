@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './useAuth';
 import { computeScore } from '../lib/scoring';
 
-const SCORE_TYPES = ['lead','deal','contact_health','account_health'];
+const SCORE_TYPES = ['lead','deal','contact_health','account_health','prospect_fit'];
 
 // ── Config fetch ──────────────────────────────────────────────────────────────
 
@@ -19,8 +19,8 @@ export function useScoringConfig() {
         .order('sort_order');
       if (error) throw error;
 
-      const criteria    = { lead: [], deal: [], contact_health: [], account_health: [] };
-      const weightsOnly = { lead: {}, deal: {}, contact_health: {}, account_health: {} };
+      const criteria    = { lead: [], deal: [], contact_health: [], account_health: [], prospect_fit: [] };
+      const weightsOnly = { lead: {}, deal: {}, contact_health: {}, account_health: {}, prospect_fit: {} };
 
       for (const row of (data ?? [])) {
         const st = row.score_type;
