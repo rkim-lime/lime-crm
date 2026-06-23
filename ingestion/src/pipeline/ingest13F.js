@@ -114,8 +114,13 @@ async function upsertSource(prospectId, filer, signals) {
 
 // ── Main export ───────────────────────────────────────────────────────────────
 
-export async function ingest13F({ limit = 50 } = {}) {
-  logger.info(`Starting 13F ingestion — limit ${limit}`);
+export async function ingest13F({
+  limit      = 50,
+  minAum     = null,   // skip prospects below this AUM (post-signal filter)
+  filerTypes = null,   // array of inferred_segment values to include
+  onProgress = null,   // async ({ stats, logLine }) — called after each filer
+} = {}) {
+  logger.info(`Starting 13F ingestion — limit ${limit}${minAum ? `, minAum $${(minAum/1e9).toFixed(1)}B` : ''}${filerTypes ? `, filerTypes [${filerTypes.join(',')}]` : ''}`);
   const stats = {
     prospects:      0,
     filings:        0,
@@ -124,6 +129,7 @@ export async function ingest13F({ limit = 50 } = {}) {
     accountMatches: 0,
     merges:         0,
     dupes:          0,
+    skipped:        0,
   };
 
   // Load ICP config once for the whole run
@@ -166,6 +172,20 @@ export async function ingest13F({ limit = 50 } = {}) {
       const { equitiesPct, optionsPresent } = assetMix(latest.holdings);
       const turnoverPct                     = computeTurnover(latest.holdings, prior?.holdings);
       const segment                         = inferSegment(filer.firmName);
+
+      // ── Config-level filters (applied after signals are known) ──
+      if (minAum !== null && aum < minAum) {
+        logger.debug(`${prefix} — skipping (AUM $${(aum/1e9).toFixed(2)}B < min $${(minAum/1e9).toFixed(2)}B)`);
+        stats.skipped++;
+        if (onProgress) await onProgress({ stats: { ...stats }, logLine: `${filer.firmName} — skipped (below min AUM)` });
+        continue;
+      }
+      if (filerTypes?.length && !filerTypes.includes(segment)) {
+        logger.debug(`${prefix} — skipping (segment "${segment}" not in [${filerTypes.join(',')}])`);
+        stats.skipped++;
+        if (onProgress) await onProgress({ stats: { ...stats }, logLine: `${filer.firmName} — skipped (segment filter)` });
+        continue;
+      }
 
       const signals = {
         estimated_aum_usd:      aum,
@@ -349,16 +369,32 @@ export async function ingest13F({ limit = 50 } = {}) {
       // ── Compute and persist fit score (all paths) ────────────
       await saveFitScore(prospectId, basePayload);
 
+      // ── Progress callback (worker uses this for live streaming) ─
+      if (onProgress) {
+        const logLine = `${filer.firmName} — ${resolution.resolution}`
+          + (resolution.resolution === 'new'
+            ? ` ($${(aum/1e9).toFixed(2)}B AUM, ${latest.holdingCount} positions)`
+            : '');
+        await onProgress({ stats: { ...stats }, logLine });
+      }
+
     } catch (err) {
       logger.error(`${prefix} — ${err.message}`);
       stats.errors++;
+      if (onProgress) {
+        await onProgress({
+          stats: { ...stats },
+          logLine: `${filer.firmName} — ERROR: ${err.message}`,
+        });
+      }
     }
   }
 
   logger.info(
     `Run complete — new:${stats.prospects} merges:${stats.merges} `
     + `acctMatches:${stats.accountMatches} dupes:${stats.dupes} `
-    + `filings:${stats.filings} holdings:${stats.holdings} errors:${stats.errors}`
+    + `skipped:${stats.skipped} filings:${stats.filings} `
+    + `holdings:${stats.holdings} errors:${stats.errors}`
   );
   return stats;
 }
