@@ -78,6 +78,48 @@ function DetailRow({ label, children }) {
   );
 }
 
+const CRITERION_LABELS = {
+  aum_tier:             'AUM Tier',
+  portfolio_turnover:   'Portfolio Turnover',
+  equity_concentration: 'Equity Concentration',
+  options_present:      'Options Activity',
+  position_count:       'Position Count',
+  filer_type:           'Filer Type',
+};
+
+function ScoreBreakdown({ breakdown }) {
+  if (!breakdown || typeof breakdown !== 'object') return null;
+  const entries = Object.entries(breakdown);
+  if (entries.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-primary)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+        Score Breakdown
+      </div>
+      {entries.map(([key, val]) => {
+        if (!val || typeof val !== 'object') return null;
+        const { points = 0, weight = 0, ratio = 0 } = val;
+        const label = CRITERION_LABELS[key] ?? key.replace(/_/g, ' ');
+        const barColor = ratio >= 1 ? 'var(--green)' : ratio >= 0.5 ? 'var(--yellow)' : 'var(--red)';
+        return (
+          <div key={key} style={{ marginBottom: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 3 }}>
+              <span style={{ color: 'var(--text-secondary)' }}>{label}</span>
+              <span style={{ fontWeight: 600, color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {points}/{weight} pts
+              </span>
+            </div>
+            <div style={{ height: 3, background: 'var(--bg-tertiary)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${Math.round(ratio * 100)}%`, background: barColor, borderRadius: 2 }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Panel({ title, children, style }) {
   return (
     <div style={{
@@ -230,19 +272,7 @@ export default function ProspectDetail() {
             </div>
 
             {/* Score breakdown from latest run */}
-            {latestScore?.breakdown && Object.keys(latestScore.breakdown).length > 0 && (
-              <div style={{ marginTop: 14, padding: '10px 12px', background: 'var(--bg-primary)', borderRadius: 6, border: '1px solid var(--border-subtle)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.05em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 8 }}>
-                  Score Breakdown
-                </div>
-                {Object.entries(latestScore.breakdown).map(([key, val]) => (
-                  <div key={key} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '2px 0' }}>
-                    <span style={{ color: 'var(--text-secondary)' }}>{key.replace(/_/g, ' ')}</span>
-                    <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{typeof val === 'number' ? val.toFixed(1) : val}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            <ScoreBreakdown breakdown={latestScore?.breakdown} />
           </Panel>
 
           {/* Filings */}
