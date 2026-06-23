@@ -29,6 +29,7 @@ import OwnershipHygiene     from './pages/reports/OwnershipHygiene';
 import UpsellOpportunities  from './pages/reports/UpsellOpportunities';
 import ScoringConfig from './pages/settings/ScoringConfig';
 import Users         from './pages/settings/Users';
+import DataPipelines from './pages/settings/DataPipelines';
 import MyProfile     from './pages/MyProfile';
 import AcceptInvite  from './pages/AcceptInvite';
 import Playbook      from './pages/Playbook';
@@ -94,6 +95,15 @@ export default function App() {
                 <ProtectedRoute>
                   <RoleGate allow={['admin']} fallback={<Navigate to="/dashboard" replace />}>
                     <Users />
+                  </RoleGate>
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/settings/pipelines"
+              element={
+                <ProtectedRoute>
+                  <RoleGate allow={['admin', 'sales', 'operations']} fallback={<Navigate to="/dashboard" replace />}>
+                    <DataPipelines />
                   </RoleGate>
                 </ProtectedRoute>
               }

@@ -41,10 +41,12 @@ const STATIC_NAV_SECTIONS = [
 ];
 
 const BASE_SETTINGS_ITEMS = [
-  { to: '/settings/profile', label: 'My Profile',     icon: '◈' },
-  { to: '/integrations',     label: 'Integrations',   icon: '⟳' },
-  { to: '/settings/scoring', label: 'Scoring Config', icon: '◎' },
+  { to: '/settings/profile',    label: 'My Profile',     icon: '◈' },
+  { to: '/integrations',        label: 'Integrations',   icon: '⟳' },
+  { to: '/settings/scoring',    label: 'Scoring Config', icon: '◎' },
 ];
+
+const PIPELINES_SETTINGS_ITEM = { to: '/settings/pipelines', label: 'Data Pipelines', icon: '▶' };
 
 const ADMIN_SETTINGS_ITEMS = [
   { to: '/settings/users',   label: 'Users',          icon: '◉' },
@@ -69,7 +71,8 @@ export default function Layout({ title, children }) {
   const navigate  = useNavigate();
   const { pathname } = useLocation();
   const { count: pendingCount } = usePendingUsers();
-  const isAdmin = role === 'admin';
+  const isAdmin       = role === 'admin';
+  const canSeePipelines = ['admin', 'sales', 'operations'].includes(role);
   const hygiene = useOwnershipHygieneCount();
   const hygieneCount = hygiene.data ?? 0;
 
@@ -78,9 +81,11 @@ export default function Layout({ title, children }) {
   );
 
   const showBanner   = isAdmin && pendingCount > 0 && pendingCount > dismissedCount;
-  const settingsItems = isAdmin
-    ? [...BASE_SETTINGS_ITEMS, ...ADMIN_SETTINGS_ITEMS]
-    : BASE_SETTINGS_ITEMS;
+  const settingsItems = [
+    ...BASE_SETTINGS_ITEMS,
+    ...(canSeePipelines ? [PIPELINES_SETTINGS_ITEM] : []),
+    ...(isAdmin ? ADMIN_SETTINGS_ITEMS : []),
+  ];
 
   const handleDismissBanner = () => {
     localStorage.setItem('lime_pending_dismissed', String(pendingCount));
