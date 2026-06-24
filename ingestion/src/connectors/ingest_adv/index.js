@@ -1,126 +1,291 @@
 /**
- * SEC Form ADV connector — bulk Part 1 ingestion.
+ * SEC Form ADV connector — bulk Part 1 XML ingestion.
  *
- * Access pattern: BULK FILE (contrast with 13F's per-filer API).
- * The SEC publishes quarterly IAPD bulk exports at:
+ * Source: SEC IAPD quarterly firm feed (GZ-compressed XML)
  *   https://adviserinfo.sec.gov/compilation
- *   https://www.sec.gov/open/datasets/ia.shtml
  *
- * Supported file formats: .zip (containing a CSV), .gz, or plain CSV.
- * Formats are detected from the URL extension / Content-Type header.
+ * File format confirmed from live file (2026-06-24):
+ *   <IAPDFirmSECReport> → <Firms> → <Firm>  (container + repeating element)
+ *   All data stored in XML *attributes*, not element text.
+ *   XML declaration: encoding="ISO-8859-1"; decoded as latin1.
  *
- * Future enrichment hook: fetch() leaves a stub for Part 2 brochure
- * PDF mining once the Part 1 bulk file is proven out.
+ * Field mapping (Q-codes confirmed against live file):
+ *   CRD number  : <Info @_FirmCrdNb>
+ *   Legal name  : <Info @_LegalNm>  (fallback: @_BusNm)
+ *   SEC file no : <Info @_SECNb>
+ *   Total AUM   : <Item5F @_Q5F2C>  (USD, disc + non-disc; absent when Q5F1="N")
+ *   Client types: <Item5D @_Q5DX1>  count attributes (positive = active)
+ *   Private fund: <Item7A>           empty string = no; object = yes
  */
 
-import { Readable }   from 'stream';
-import { gunzipSync } from 'zlib';
-import { parse as csvParse } from 'csv-parse';
-import AdmZip          from 'adm-zip';
+import { createGunzip } from 'zlib';
+import { XMLParser }    from 'fast-xml-parser';
 import { inferSegment } from '../../engine/computeSignals.js';
 
-// ── Column name resolver ──────────────────────────────────────────────────────
-// Normalizes CSV headers to lowercase_underscore and tries multiple aliases
-// so the connector works against different IAPD export flavours.
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-function normalizeHeader(h) {
-  return h.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-}
+const FIRM_EL   = 'Firm';
+const OPEN_PRE  = `<${FIRM_EL}`;    // '<Firm'
+const CLOSE_TAG = `</${FIRM_EL}>`; // '</Firm>'
 
-function mkGet(...aliases) {
-  const keys = aliases.map(a => a.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
-  return (row) => {
-    for (const k of keys) {
-      const v = row[k];
-      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
-    }
-    return null;
-  };
-}
+// ── XML parser (module-level singleton) ───────────────────────────────────────
 
-// ADV Part 1 column mappings (Item numbers reference Form ADV sections)
-const getCrd      = mkGet('firm_crd', 'crd_num', 'crd_number', 'crd', 'crdfirm');                 // Item 1.A
-const getSecFile  = mkGet('sec_file_num', 'sec_file_number', 'file_number', 'sec_no', 'form_adv_file_no'); // Item 1.D
-const getFirmName = mkGet('legal_name', 'legal_nm', 'firm_name', 'name', 'entity_name', 'adviser_name');  // Item 1.A
-const getAum      = mkGet(                                                                          // Item 5.F
-  'total_regulatory_assets', 'regulatory_aum', 'reg_assets_usd',
-  'total_net_assets', 'total_assets', 'gross_assets', 'aum_usd', 'total_aum'
-);
-const getPrivFund    = mkGet('priv_fund_advis_flag', 'private_fund_adviser', 'private_fund_flag', 'is_priv_fund'); // Item 7.A
-// Item 5.D — Types of Clients (Y/N columns, naming varies by export)
-const getClientPooled  = mkGet('pooled_invst_vehicles_flag', 'client_pooled_vehicles', 'clients_pool', 'pooled_vehicles_flag');
-const getClientHNW     = mkGet('hnw_individuals_flag', 'client_high_net_worth', 'clients_hnw', 'high_net_worth_flag');
-const getClientPension = mkGet('pension_plans_flag', 'client_pension', 'clients_pension', 'pension_flag');
-const getClientInstit  = mkGet('institutional_flag', 'client_institutional', 'clients_inst', 'institutions_flag');
-const getClientRetail  = mkGet('individuals_flag', 'client_individuals', 'clients_ind', 'retail_individuals_flag');
+const PARSER = new XMLParser({
+  ignoreAttributes:    false,
+  attributeNamePrefix: '@_',
+  parseAttributeValue: true,
+  trimValues:          true,
+  isArray:             () => false,
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-const isY = (v) => v != null && /^(y|yes|true|1|x)$/i.test(String(v).trim());
-
-function parseClientTypes(row) {
-  const types = [];
-  if (isY(getClientPooled(row)))  types.push('pooled_investment_vehicles');
-  if (isY(getClientHNW(row)))     types.push('high_net_worth');
-  if (isY(getClientPension(row))) types.push('pension_plans');
-  if (isY(getClientInstit(row)))  types.push('institutional');
-  if (isY(getClientRetail(row)))  types.push('individuals');
-  return types;
+// Case-insensitive deep dot-path lookup.
+function getPath(obj, dotPath) {
+  let cur = obj;
+  for (const part of dotPath.split('.')) {
+    if (cur == null || typeof cur !== 'object') return null;
+    const k = Object.keys(cur).find(k => k.toLowerCase() === part.toLowerCase());
+    cur = k !== undefined ? cur[k] : null;
+  }
+  return cur ?? null;
 }
 
-function inferAdvSegment(firmName, clientTypes, hasPrivFund) {
-  if (hasPrivFund || clientTypes.includes('pooled_investment_vehicles')) {
-    if (/quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName)) return 'quant_fund';
-    return 'hedge_fund';
-  }
-  if (clientTypes.includes('pension_plans')) return 'pension';
-  // Purely retail/HNW advisers — map to broker_dealer (closest available segment)
-  if (clientTypes.length > 0 && clientTypes.every(t => ['individuals', 'high_net_worth'].includes(t))) {
-    return 'broker_dealer';
-  }
-  return inferSegment(firmName); // fall back to name heuristics from computeSignals
+// True when an Item5D count attribute is a positive integer.
+// Q5DX1 = number of clients of type X; absent or 0 = none.
+function hasCount(firm, qcode) {
+  const v = getPath(firm, `FormInfo.Part1A.Item5D.@_${qcode}`);
+  return v != null && Number(v) > 0;
 }
 
-// ── Bulk file download ────────────────────────────────────────────────────────
+// Parse a raw <Firm>…</Firm> XML string into a JS object (the Firm node).
+function firmObjFromXml(firmXml) {
+  const parsed = PARSER.parse(firmXml);
+  return parsed[FIRM_EL] ?? parsed;
+}
 
-async function downloadCsvText(advBulkUrl, logger) {
-  logger.info(`ADV: downloading bulk file from ${advBulkUrl}`);
-  const res = await fetch(advBulkUrl, {
-    headers: { 'User-Agent': 'LimeCRM-Ingestion/1.0 (contact@limex.com)' },
-  });
+// ── Field extraction (exported so test-adv-parse.js can call the real logic) ──
+
+/**
+ * Extract a FirmSignal from an already-parsed Firm object.
+ * Returns null if the block is missing the minimum identity fields.
+ */
+export function normalizeFromFirm(firm) {
+  // ── Identity ──────────────────────────────────────────────────────────────
+  const crdRaw    = getPath(firm, 'Info.@_FirmCrdNb');
+  const crdNumber = crdRaw ? String(crdRaw).replace(/\D/g, '') || null : null;
+  const firmName  = getPath(firm, 'Info.@_LegalNm') ?? getPath(firm, 'Info.@_BusNm');
+  const secNumber = getPath(firm, 'Info.@_SECNb') ?? null;
+
+  if (!crdNumber || !firmName) return null;
+
+  // ── AUM — Item 5.F ────────────────────────────────────────────────────────
+  // Q5F1 = "Y"/"N" — whether the firm has regulatory AUM (not the dollar figure)
+  // Q5F2C = total regulatory AUM in USD (discretionary Q5F2A + non-disc Q5F2B)
+  // Absent / "Y" / "N" → null (private-fund-only advisers legitimately have no SMA AUM)
+  const aumRaw         = getPath(firm, 'FormInfo.Part1A.Item5F.@_Q5F2C');
+  const aumIsNumeric   = aumRaw != null && aumRaw !== '' && aumRaw !== 'Y' && aumRaw !== 'N';
+  const regulatoryAum  = aumIsNumeric
+    ? (parseFloat(String(aumRaw).replace(/[^0-9.]/g, '')) || 0)
+    : null;
+
+  // ── Client types — Item 5.D (count-based) ─────────────────────────────────
+  // Q5DX1 = count of clients of type X; positive = adviser has that client type.
+  //   Q5DA = Individuals (non-HNW)           Q5DB = High net worth individuals
+  //   Q5DC = Banking/thrift institutions      Q5DD = Investment companies (mutual funds)
+  //   Q5DE = Business development companies  Q5DF = Pension/profit-sharing (non-gov)
+  //   Q5DH = State/municipal gov entities     Q5DI = Other investment advisers
+  //   Q5DJ = Insurance companies              Q5DK = Sovereign wealth funds
+  //   Q5DM = Pooled investment vehicles (hedge funds, private equity, etc.)
+  const clientTypes = [
+    hasCount(firm, 'Q5DM1') && 'pooled_investment_vehicles',
+    hasCount(firm, 'Q5DB1') && 'high_net_worth',
+    (hasCount(firm, 'Q5DF1') || hasCount(firm, 'Q5DH1')) && 'pension_plans',
+    (hasCount(firm, 'Q5DC1') || hasCount(firm, 'Q5DI1') ||
+     hasCount(firm, 'Q5DJ1') || hasCount(firm, 'Q5DK1')) && 'institutional',
+    hasCount(firm, 'Q5DA1') && 'individuals',
+  ].filter(Boolean);
+
+  // ── Private fund adviser — Item 7.A ───────────────────────────────────────
+  // fast-xml-parser parses empty self-closing tags as "" (string).
+  // When Item7A has content (Q7A1..Q7A16 attributes), it parses as an object.
+  // An object value = this firm advises at least one private fund.
+  const item7A = getPath(firm, 'FormInfo.Part1A.Item7A');
+  const hasPrivateFundClients = item7A != null && item7A !== '' && typeof item7A === 'object';
+
+  // ── Inferred segment ──────────────────────────────────────────────────────
+  let inferred_segment = inferSegment(firmName);
+  if (hasPrivateFundClients || clientTypes.includes('pooled_investment_vehicles')) {
+    inferred_segment = /quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName)
+      ? 'quant_fund'
+      : 'hedge_fund';
+  } else if (
+    clientTypes.includes('pension_plans') &&
+    !clientTypes.includes('high_net_worth') &&
+    !clientTypes.includes('pooled_investment_vehicles')
+  ) {
+    inferred_segment = 'pension';
+  } else if (
+    clientTypes.length > 0 &&
+    clientTypes.every(t => ['individuals', 'high_net_worth'].includes(t))
+  ) {
+    inferred_segment = 'broker_dealer';
+  }
+
+  return {
+    firmName,
+    crdNumber,
+    secNumber,
+    cik:                    null,   // ADV primary key is CRD, not CIK
+    source:                 'sec_adv',
+    source_url:             `https://adviserinfo.sec.gov/firm/summary/${crdNumber}`,
+    estimated_aum_usd:      regulatoryAum ?? 0,  // 0 when not reported (engine-safe)
+    position_count:         0,      // ADV Part 1 has no holdings data
+    portfolio_turnover_pct: null,
+    equities_pct:           0,
+    options_present:        false,
+    inferred_segment,
+    clientTypes,
+    advFlags: { hasPrivateFundClients },
+    regulatoryAum,          // null = not reported in Item 5.F (private-fund-only advisers)
+    quarters: [],
+  };
+}
+
+/**
+ * Convenience: parse a raw <Firm>…</Firm> XML string directly to FirmSignal.
+ * Exported for use by test-adv-parse.js.
+ */
+export function parseFirmBlock(firmXml) {
+  return normalizeFromFirm(firmObjFromXml(firmXml));
+}
+
+// ── Streaming XML block extractor ─────────────────────────────────────────────
+
+/**
+ * Stream-decompress the .gz file and yield <Firm> blocks until `limit` passing
+ * candidates are collected or the stream ends.
+ *
+ * Memory strategy: accumulate decompressed bytes in a string buffer, scan for
+ * complete <Firm>…</Firm> blocks as they arrive, process each immediately, and
+ * trim the buffer. The download is aborted as soon as `limit` is reached.
+ */
+async function streamFirms(url, userAgent, limit, minAum, logger) {
+  logger.info(`ADV: GET ${url}`);
+  const res = await fetch(url, { headers: { 'User-Agent': userAgent } });
 
   if (!res.ok) {
     if (res.status === 404) {
       throw new Error(
-        `ADV bulk file not found (404): ${advBulkUrl}\n` +
+        `ADV bulk file not found (404): ${url}\n` +
         'The SEC rotates this file quarterly. Get the current URL from:\n' +
         '  https://adviserinfo.sec.gov/compilation\n' +
-        'and update advBulkUrl in the job definition (or paste it in the Run Now modal).'
+        'then paste it in the Run Now modal or save it in the job definition.'
       );
     }
-    throw new Error(`ADV bulk file download failed: HTTP ${res.status} — ${advBulkUrl}`);
+    throw new Error(`ADV bulk file HTTP ${res.status}: ${url}`);
   }
 
-  const buf = Buffer.from(await res.arrayBuffer());
-  const url  = advBulkUrl.toLowerCase();
-  const ct   = (res.headers.get('content-type') ?? '').toLowerCase();
+  const gz         = createGunzip();
+  let   buf        = '';
+  let   stopped    = false;
+  let   scanned    = 0;
+  const candidates = [];
 
-  if (url.endsWith('.zip') || ct.includes('zip')) {
-    logger.info(`ADV: decompressing ZIP (${(buf.length / 1e6).toFixed(1)} MB)`);
-    const zip   = new AdmZip(buf);
-    const entry = zip.getEntries().find(e => e.entryName.toLowerCase().endsWith('.csv'));
-    if (!entry) throw new Error('ADV ZIP archive contains no .csv file — check the URL points to the IAPD bulk export');
-    logger.info(`ADV: extracted ${entry.entryName}`);
-    return zip.readAsText(entry);
-  }
+  // Scan buf for complete <Firm> blocks; process each one synchronously.
+  const drainBuffer = () => {
+    while (candidates.length < limit) {
+      // Word-boundary-safe scan: <Firm must be followed by >, space, or /
+      // to avoid matching the <Firms> container.
+      let s = buf.indexOf(OPEN_PRE);
+      while (s >= 0) {
+        const next = buf[s + OPEN_PRE.length];
+        if (!next || /[\s>\/]/.test(next)) break;
+        s = buf.indexOf(OPEN_PRE, s + 1);
+      }
+      if (s < 0) {
+        // No opening found — keep a small tail to handle chunk-split tags
+        buf = buf.length > 20 ? buf.slice(-20) : buf;
+        break;
+      }
 
-  if (url.endsWith('.gz') || ct.includes('gzip')) {
-    logger.info(`ADV: decompressing GZIP (${(buf.length / 1e6).toFixed(1)} MB)`);
-    return gunzipSync(buf).toString('utf8');
-  }
+      const e = buf.indexOf(CLOSE_TAG, s);
+      if (e < 0) {
+        // Opening found but no closing yet — wait for more data
+        buf = buf.slice(s);
+        break;
+      }
 
-  logger.info(`ADV: plain CSV (${(buf.length / 1e6).toFixed(1)} MB)`);
-  return buf.toString('utf8');
+      const block = buf.slice(s, e + CLOSE_TAG.length);
+      buf = buf.slice(e + CLOSE_TAG.length);
+      scanned++;
+
+      try {
+        const firm = firmObjFromXml(block);
+        const { crdNumber, firmName, aum, hasPriv } = quickMeta(firm);
+        if (!crdNumber || !firmName) continue;
+
+        // minAum filter:
+        //   - Skip if AUM is reported, below threshold, and not a private fund adviser.
+        //   - Private-fund-only advisers (null AUM) always pass — their AUM is
+        //     legitimately blank, not zero.
+        //   - Firms with unreported AUM that aren't private funds also pass through
+        //     (can't make a call without data).
+        if (minAum != null && aum !== null && !hasPriv && aum < minAum) continue;
+
+        candidates.push({ firmName, crdNumber, _firm: firm });
+      } catch {
+        // skip malformed blocks silently
+      }
+    }
+
+    if (candidates.length >= limit) stopped = true;
+  };
+
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const settle = () => { if (!settled) { settled = true; resolve(); } };
+    const fail   = (err) => { if (!settled) { settled = true; reject(err); } };
+
+    gz.on('data', chunk => {
+      if (stopped) return;
+      buf += chunk.toString('latin1'); // ISO-8859-1 per XML declaration
+      drainBuffer();
+    });
+    gz.on('end',   settle);
+    gz.on('close', settle);
+    gz.on('error', err => { if (stopped) settle(); else fail(err); });
+
+    const reader = res.body.getReader();
+    (async () => {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done)    { gz.end(); break; }
+          if (stopped) { gz.destroy(); await reader.cancel().catch(() => {}); break; }
+          gz.write(value);
+        }
+      } catch (err) {
+        if (!stopped) fail(err);
+      }
+    })();
+  });
+
+  logger.info(`ADV: scanned ${scanned} firms → ${candidates.length} candidates (limit ${limit})`);
+  return candidates;
+}
+
+// Lightweight meta extraction for discover-phase filtering (avoids full signal build)
+function quickMeta(firm) {
+  const crdRaw = getPath(firm, 'Info.@_FirmCrdNb');
+  const crdNumber = crdRaw ? String(crdRaw).replace(/\D/g, '') || null : null;
+  const firmName  = getPath(firm, 'Info.@_LegalNm') ?? getPath(firm, 'Info.@_BusNm');
+  const aumRaw    = getPath(firm, 'FormInfo.Part1A.Item5F.@_Q5F2C');
+  const aumIsNum  = aumRaw != null && aumRaw !== '' && aumRaw !== 'Y' && aumRaw !== 'N';
+  const aum       = aumIsNum ? (parseFloat(String(aumRaw).replace(/[^0-9.]/g, '')) || 0) : null;
+  const item7A    = getPath(firm, 'FormInfo.Part1A.Item7A');
+  const hasPriv   = item7A != null && item7A !== '' && typeof item7A === 'object';
+  return { crdNumber, firmName, aum, hasPriv };
 }
 
 // ── Connector ─────────────────────────────────────────────────────────────────
@@ -132,113 +297,32 @@ const advConnector = {
   jurisdiction: 'us',
   kind:         'discovery',
 
-  /**
-   * Download the quarterly bulk file and stream-parse it into candidate rows.
-   * config.advBulkUrl is required; config.limit caps how many rows are returned.
-   * config.minAum filters below-threshold advisers before they reach the engine.
-   */
   async discover(config, ctx) {
-    const { logger } = ctx;
     const { advBulkUrl, limit = 50, minAum } = config;
+    const { logger } = ctx;
 
     if (!advBulkUrl) {
       throw new Error(
-        'ADV jobs require advBulkUrl in config — set it in the job definition or provide it in the Run Now modal.\n' +
-        'Get the current quarterly file URL from https://adviserinfo.sec.gov/compilation'
+        'ADV jobs require advBulkUrl in config.\n' +
+        'Get the current quarterly bulk file from https://adviserinfo.sec.gov/compilation\n' +
+        'then paste the direct URL in the Run Now modal, or save it in the job definition.'
       );
     }
 
-    const csvText = await downloadCsvText(advBulkUrl, logger);
-
-    // Stream-parse so we never hold all ~17 K rows in memory simultaneously
-    const stream = Readable.from([csvText]).pipe(
-      csvParse({
-        columns:             h => h.map(normalizeHeader),
-        skip_empty_lines:    true,
-        trim:                true,
-        relax_quotes:        true,
-        relax_column_count:  true,
-      })
-    );
-
-    const candidates = [];
-    let scanned = 0;
-
-    for await (const row of stream) {
-      scanned++;
-      const crdRaw  = getCrd(row);
-      const name    = getFirmName(row);
-      if (!crdRaw || !name) continue;
-
-      const crdNumber = String(crdRaw).replace(/\D/g, '');
-      if (!crdNumber) continue;
-
-      // Early AUM filter — avoids engine overhead for below-threshold advisers
-      if (minAum != null) {
-        const rawAum = parseFloat(getAum(row) ?? '0');
-        if (!isNaN(rawAum) && rawAum > 0 && rawAum < minAum) continue;
-      }
-
-      candidates.push({ firmName: name, crdNumber, _row: row });
-      if (limit && candidates.length >= limit) break;
-    }
-
-    logger.info(`ADV: scanned ${scanned} rows → ${candidates.length} candidates (limit ${limit})`);
-    return candidates;
+    const userAgent = process.env.SEC_USER_AGENT ?? 'lime-crm-ingestion/1.0 (contact@limex.com)';
+    return streamFirms(advBulkUrl, userAgent, limit, minAum, logger);
   },
 
-  /**
-   * Part 1 data is already in the candidate row from discover() — pass through.
-   * FUTURE: fetch Part 2 brochure PDF for keyword enrichment:
-   *   e.g. GET https://adviserinfo.sec.gov/firm/summary/{crdNumber}
-   *   and parse the PDF brochure for AUM narrative, strategy keywords, key personnel.
-   */
   async fetch(filer, _config, _ctx) {
-    return [filer._row];
+    // Part 1 data is already in _firm from discover() — pass it through.
+    // FUTURE: fetch Part 2 brochure PDF for keyword enrichment:
+    //   GET https://adviserinfo.sec.gov/firm/summary/{crdNumber}
+    //   Parse the PDF for AUM narrative, strategy keywords, key personnel.
+    return [filer._firm];
   },
 
-  /**
-   * Map a raw ADV Part 1 CSV row to the FirmSignal contract.
-   * Column references: Item numbers from Form ADV Part 1A.
-   * AUM (Item 5.F) is taken as-is in USD from the bulk export.
-   */
-  normalize(filer, [rawRow]) {
-    const { firmName, crdNumber } = filer;
-
-    // Item 1.D — SEC file number
-    const secNumber = getSecFile(rawRow) ?? null;
-
-    // Item 5.F — Regulatory AUM (reported in USD in IAPD bulk exports)
-    const rawAum        = parseFloat(getAum(rawRow) ?? '0');
-    const regulatoryAum = isNaN(rawAum) || rawAum <= 0 ? 0 : rawAum;
-
-    // Item 5.D — Types of clients
-    const clientTypes = parseClientTypes(rawRow);
-
-    // Item 7.A — Private fund adviser flag
-    const hasPrivFund = isY(getPrivFund(rawRow));
-    const advFlags    = { hasPrivateFundClients: hasPrivFund };
-
-    const inferred_segment = inferAdvSegment(firmName, clientTypes, hasPrivFund);
-
-    return {
-      firmName,
-      crdNumber,
-      secNumber,
-      cik:                    null,   // ADV primary key is CRD; CIK may be added later if available
-      source:                 'sec_adv',
-      source_url:             `https://adviserinfo.sec.gov/firm/summary/${crdNumber}`,
-      estimated_aum_usd:      regulatoryAum,
-      position_count:         0,      // ADV Part 1 has no holdings; AUM carries the size signal
-      portfolio_turnover_pct: null,
-      equities_pct:           0,
-      options_present:        false,
-      inferred_segment,
-      clientTypes,
-      advFlags,
-      regulatoryAum,
-      quarters: [],                   // no filing quarters for ADV Part 1
-    };
+  normalize(filer, [firm]) {
+    return normalizeFromFirm(firm);
   },
 };
 

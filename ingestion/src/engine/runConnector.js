@@ -52,8 +52,9 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
 
       const signal = connector.normalize(filer, quarters);
 
-      // Config-level filters (applied after signals are known)
-      if (config.minAum != null && signal.estimated_aum_usd < config.minAum) {
+      // Config-level filters (applied after signals are known).
+      // null AUM (ADV private-fund-only advisers) is treated as "not reported" — never filtered.
+      if (config.minAum != null && signal.estimated_aum_usd != null && signal.estimated_aum_usd < config.minAum) {
         logger.debug(`${prefix} — skipping (AUM $${(signal.estimated_aum_usd / 1e9).toFixed(2)}B < min $${(config.minAum / 1e9).toFixed(2)}B)`);
         stats.skipped++;
         if (onProgress) await onProgress({ stats: { ...stats }, logLine: `${filer.firmName} — skipped (below min AUM)` });
