@@ -78,6 +78,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
       const basePayload = {
         firm_name:              signal.firmName,
         cik:                    signal.cik,
+        crd_number:             signal.crdNumber ?? null,
         source:                 signal.source,
         source_url:             signal.source_url,
         estimated_aum_usd:      signal.estimated_aum_usd,
@@ -88,9 +89,14 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
         inferred_segment:       signal.inferred_segment,
       };
 
+      // Use (crd_number, source) as the upsert conflict key when CRD is the
+      // primary identifier (ADV); fall back to (cik, source) for 13F.
+      const conflictKey = signal.crdNumber ? 'crd_number,source' : 'cik,source';
+
       const resolution = await resolveFirm(supabase, {
-        cik:      signal.cik,
-        firmName: signal.firmName,
+        cik:       signal.cik,
+        firmName:  signal.firmName,
+        crdNumber: signal.crdNumber,
       });
 
       let prospectId;
@@ -119,7 +125,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
               status:                'matched_to_account',
               matched_to_account_id: resolution.accountId,
             },
-            { onConflict: 'cik,source', ignoreDuplicates: false }
+            { onConflict: conflictKey, ignoreDuplicates: false }
           )
           .select('id')
           .single();
@@ -163,7 +169,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
               status:          'possible_duplicate',
               passes_icp:      passesIcp,
             },
-            { onConflict: 'cik,source', ignoreDuplicates: false }
+            { onConflict: conflictKey, ignoreDuplicates: false }
           )
           .select('id')
           .single();
@@ -209,7 +215,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
               normalized_name: normalizeName(signal.firmName),
               passes_icp:      passesIcp,
             },
-            { onConflict: 'cik,source', ignoreDuplicates: false }
+            { onConflict: conflictKey, ignoreDuplicates: false }
           )
           .select('id')
           .single();

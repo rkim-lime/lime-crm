@@ -23,7 +23,7 @@
  *
  * @typedef {{
  *   firmName:               string,
- *   cik:                    string,
+ *   cik:                    string | null,
  *   estimated_aum_usd:      number,
  *   position_count:         number,
  *   portfolio_turnover_pct: number | null,
@@ -33,6 +33,11 @@
  *   source:                 string,
  *   source_url:             string,
  *   quarters:               Quarter[],
+ *   crdNumber?:             string,
+ *   secNumber?:             string,
+ *   clientTypes?:           string[],
+ *   advFlags?:              { hasPrivateFundClients: boolean },
+ *   regulatoryAum?:         number,
  * }} FirmSignal
  *
  * @typedef {{

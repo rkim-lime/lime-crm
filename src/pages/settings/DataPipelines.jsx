@@ -438,6 +438,8 @@ export default function DataPipelines() {
   const [deletingDefId, setDeletingDefId] = useState(null);
   const [viewingRunId,  setViewingRunId]  = useState(null);
   const [toast,         setToast]         = useState(null);
+  const [advUrlModal,   setAdvUrlModal]   = useState(null);  // holds the def when modal is open
+  const [advUrlInput,   setAdvUrlInput]   = useState('');
 
   const { role } = useAuth();
   const canWrite = ['admin', 'sales', 'operations'].includes(role);
@@ -477,8 +479,36 @@ export default function DataPipelines() {
   }, []);
 
   const handleRunNow = async (def) => {
+    // ADV jobs need a bulk URL at run time if one isn't stored in the job definition
+    if (def.job_type === 'ingest_adv' && !def.config?.advBulkUrl) {
+      setAdvUrlInput('');
+      setAdvUrlModal(def);
+      return;
+    }
     try {
       const result = await triggerRun.mutateAsync({ definition: def });
+      setToast(`"${def.name}" queued — worker will pick it up shortly`);
+      setViewingRunId(result.id);
+    } catch (err) {
+      setToast(`Error: ${err.message}`);
+    }
+  };
+
+  const handleAdvUrlConfirm = async () => {
+    const url = advUrlInput.trim();
+    if (!url || !url.startsWith('https://')) {
+      setToast('Please enter a valid https:// URL');
+      return;
+    }
+    const def = advUrlModal;
+    setAdvUrlModal(null);
+    // Merge URL into config_snapshot WITHOUT writing back to the job definition
+    const defWithUrl = {
+      ...def,
+      config: { ...def.config, advBulkUrl: url },
+    };
+    try {
+      const result = await triggerRun.mutateAsync({ definition: defWithUrl });
       setToast(`"${def.name}" queued — worker will pick it up shortly`);
       setViewingRunId(result.id);
     } catch (err) {
@@ -669,6 +699,55 @@ export default function DataPipelines() {
       )}
       {viewingRunId && (
         <RunDetailPanel runId={viewingRunId} onClose={() => setViewingRunId(null)} />
+      )}
+
+      {/* ADV bulk URL modal — shown when running an ADV job with no stored URL */}
+      {advUrlModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 10000,
+            background: 'rgba(0,0,0,0.4)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          onClick={() => setAdvUrlModal(null)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-primary)', borderRadius: 10, padding: 28,
+              width: 520, maxWidth: '90vw', boxShadow: '0 8px 40px rgba(0,0,0,.2)',
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 style={{ margin: '0 0 8px', fontSize: 16, fontWeight: 700 }}>ADV Bulk File URL</h3>
+            <p style={{ margin: '0 0 16px', fontSize: 13.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              This job has no stored bulk URL. Paste the SEC quarterly IAPD export link
+              below — it will be used only for this run and won't change the job definition.{' '}
+              <a href="https://adviserinfo.sec.gov/compilation" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
+                Find the current file →
+              </a>
+            </p>
+            <input
+              className="form-input"
+              type="url"
+              value={advUrlInput}
+              onChange={e => setAdvUrlInput(e.target.value)}
+              placeholder="https://adviserinfo.sec.gov/..."
+              autoFocus
+              onKeyDown={e => { if (e.key === 'Enter') handleAdvUrlConfirm(); if (e.key === 'Escape') setAdvUrlModal(null); }}
+              style={{ marginBottom: 16 }}
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={() => setAdvUrlModal(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleAdvUrlConfirm}
+                disabled={!advUrlInput.trim().startsWith('https://')}
+              >
+                Run Now
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   );
