@@ -227,7 +227,7 @@ function UserTable({ profiles, showSuperstar, onDeactivate, onReactivate, onRemo
 
                 {/* Last sign in */}
                 <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                  {u.last_sign_in ? fmtRelTime(u.last_sign_in) : 'Never'}
+                  {u.last_sign_in_at ? fmtRelTime(u.last_sign_in_at) : 'Never'}
                 </td>
 
                 {/* Status */}

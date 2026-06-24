@@ -9,14 +9,7 @@ export function useAllProfiles() {
   return useQuery({
     queryKey: ['profiles', 'all'],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select(`
-          *,
-          invited_by_profile:invited_by(full_name, email),
-          deactivated_by_profile:deactivated_by(full_name, email)
-        `)
-        .order('created_at');
+      const { data, error } = await supabase.rpc('get_user_management');
       if (error) throw error;
       return data ?? [];
     },
