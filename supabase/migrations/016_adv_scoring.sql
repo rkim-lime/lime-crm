@@ -24,11 +24,12 @@ ALTER TABLE public.accounts
   ADD COLUMN IF NOT EXISTS crd_number text;
 
 -- ── 3. Indexes ────────────────────────────────────────────────
--- Unique index on (crd_number, source) for ADV prospect idempotency.
--- Partial (WHERE NOT NULL) so that multiple null-CRD manual prospects coexist.
+-- Plain unique index on (crd_number, source) for ADV prospect idempotency.
+-- Must be non-partial — ON CONFLICT only matches partial indexes when the
+-- conflicting row satisfies the WHERE clause, which Supabase/PostgREST
+-- cannot guarantee at query time, breaking upserts.
 CREATE UNIQUE INDEX IF NOT EXISTS prospects_crd_source_unique
-  ON public.prospects(crd_number, source)
-  WHERE crd_number IS NOT NULL;
+  ON public.prospects(crd_number, source);
 
 CREATE INDEX IF NOT EXISTS prospects_crd_number_idx
   ON public.prospects(crd_number);
