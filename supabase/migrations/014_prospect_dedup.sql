@@ -164,18 +164,12 @@ RETURNS TABLE(
   LIMIT 5;
 $$ LANGUAGE sql STABLE;
 
--- ── 9. current_user_role helper (for RLS) ────────────────────
-CREATE OR REPLACE FUNCTION public.current_user_role()
-RETURNS text LANGUAGE sql STABLE SECURITY DEFINER AS $$
-  SELECT role::text FROM public.profiles WHERE id = auth.uid();
-$$;
-
--- ── 10. Backfill normalized_name for existing prospects ───────
+-- ── 9. Backfill normalized_name for existing prospects ──────── (renumbered; current_user_role already exists)
 UPDATE public.prospects
 SET normalized_name = public.normalize_firm_name(firm_name)
 WHERE normalized_name IS NULL;
 
--- ── 11. RLS ───────────────────────────────────────────────────
+-- ── 10. RLS ───────────────────────────────────────────────────
 ALTER TABLE public.prospect_sources  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dedup_queue       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.icp_filter_config ENABLE ROW LEVEL SECURITY;
@@ -202,7 +196,7 @@ DROP POLICY IF EXISTS "icp_filter_update" ON public.icp_filter_config;
 CREATE POLICY "icp_filter_update" ON public.icp_filter_config
   FOR ALL USING (is_admin());
 
--- ── 12. Confirmation ──────────────────────────────────────────
+-- ── 11. Confirmation ──────────────────────────────────────────
 SELECT
   (SELECT COUNT(*) FROM information_schema.columns
    WHERE table_name = 'accounts'
