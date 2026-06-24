@@ -266,7 +266,7 @@ function RunTable({ runs, canWrite, onView, onCancel, onReset }) {
                     <button
                       className="btn btn-sm"
                       title="Worker appears dead — reset to re-queue"
-                      style={{ color: '#d97706', border: '1px solid #fde68a', background: '#fffbeb' }}
+                      style={{ background: '#B45309', color: '#FFFFFF', border: '1px solid #B45309' }}
                       onClick={() => onReset(run.id)}
                     >
                       Reset
@@ -325,7 +325,7 @@ function RunDetailPanel({ runId, onClose }) {
             {isRunStuck(run) && (
               <button
                 className="btn btn-sm"
-                style={{ marginLeft: 'auto', color: '#d97706', border: '1px solid #fde68a', background: '#fffbeb' }}
+                style={{ marginLeft: 'auto', background: '#B45309', color: '#FFFFFF', border: '1px solid #B45309' }}
                 onClick={() => resetRun.mutate(runId)}
                 disabled={resetRun.isPending}
                 title="Worker heartbeat lost — re-queue this run for any available worker"
@@ -552,14 +552,14 @@ export default function DataPipelines() {
       {/* Worker not-started warning */}
       {stuckQueued && (
         <div style={{
-          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
-          padding: '12px 16px', marginBottom: 20,
+          background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 20, color: '#78350F',
           display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 13.5,
         }}>
           <span>⚠️</span>
           <span>
             A job has been queued for over a minute with no worker activity. Run{' '}
-            <code style={{ background: '#fef9c3', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>npm run worker</code>{' '}
+            <code style={{ background: 'rgba(245,158,11,0.2)', color: '#78350F', padding: '1px 5px', borderRadius: 3, fontSize: 12 }}>npm run worker</code>{' '}
             in the <strong>ingestion/</strong> directory to start the worker.
           </span>
         </div>
@@ -568,8 +568,8 @@ export default function DataPipelines() {
       {/* Stuck-running warning */}
       {stuckRunning.length > 0 && (
         <div style={{
-          background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8,
-          padding: '12px 16px', marginBottom: 20,
+          background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 8,
+          padding: '12px 16px', marginBottom: 20, color: '#78350F',
           display: 'flex', alignItems: 'center', gap: 10, fontSize: 13.5,
         }}>
           <span>⚠</span>
@@ -578,7 +578,7 @@ export default function DataPipelines() {
           </span>
           <button
             className="btn btn-sm"
-            style={{ color: '#d97706', border: '1px solid #fde68a', background: '#fef9c3', whiteSpace: 'nowrap' }}
+            style={{ background: '#B45309', color: '#FFFFFF', border: '1px solid #B45309', whiteSpace: 'nowrap' }}
             onClick={() => resetRun.mutate(stuckRunning[0].id)}
             disabled={resetRun.isPending}
           >
