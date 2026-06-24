@@ -77,20 +77,48 @@ async function claimNextJob() {
 async function executeJob(run) {
   logger.info(`[${workerId}] Executing run ${run.id}`);
 
-  // Resolve config + job_type: snapshot first, fall back to definition
-  let config  = run.config_snapshot ?? {};
-  let jobType = 'ingest_13f'; // safe default (only one connector today)
-  if (run.job_definition_id) {
-    const { data: def } = await supabase
-      .from('job_definitions')
-      .select('config, job_type')
-      .eq('id', run.job_definition_id)
-      .maybeSingle();
-    if (def) {
-      if (!Object.keys(config).length) config = def.config ?? {};
-      jobType = def.job_type ?? jobType;
-    }
+  // Resolve job_type and config from the definition, merged with config_snapshot.
+  // config_snapshot overrides definition.config (it captures runtime overrides like advBulkUrl).
+  // There is NO default connector — if we can't determine job_type the run must FAIL,
+  // not silently run the wrong connector.
+  let config  = {};
+  let jobType = null;
+
+  if (!run.job_definition_id) {
+    throw new Error(
+      `Run ${run.id} has no job_definition_id — cannot determine which connector to run`
+    );
   }
+
+  const { data: def, error: defErr } = await supabase
+    .from('job_definitions')
+    .select('config, job_type')
+    .eq('id', run.job_definition_id)
+    .maybeSingle();
+
+  if (defErr) {
+    throw new Error(
+      `Failed to fetch job definition ${run.job_definition_id} for run ${run.id}: ${defErr.message}`
+    );
+  }
+  if (!def) {
+    throw new Error(
+      `Job definition ${run.job_definition_id} not found (run ${run.id}) — ` +
+      'was it deleted after the run was queued?'
+    );
+  }
+
+  jobType = def.job_type;
+  if (!jobType) {
+    throw new Error(
+      `Job definition ${run.job_definition_id} has no job_type — ` +
+      'cannot determine which connector to run'
+    );
+  }
+
+  // Merge: definition.config provides base defaults; config_snapshot overrides
+  // (config_snapshot captures runtime fields like advBulkUrl added at trigger time).
+  config = { ...(def.config ?? {}), ...(run.config_snapshot ?? {}) };
 
   const logLines   = [];
   let   lastFlush  = Date.now();
