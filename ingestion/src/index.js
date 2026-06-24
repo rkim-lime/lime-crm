@@ -1,7 +1,7 @@
-import { config }        from './config.js';    // validates env vars at startup
-import { runConnector }  from './engine/runConnector.js';
-import { startWorker }   from './worker/worker.js';
-import { logger }        from './utils/logger.js';
+import { config }                        from './config.js';    // validates env vars at startup
+import { runConnector }                  from './engine/runConnector.js';
+import { startWorker, startWorkerOnce }  from './worker/worker.js';
+import { logger }                        from './utils/logger.js';
 
 // Prevent unused-import lint warnings — config is imported for its side effects
 void config;
@@ -25,13 +25,21 @@ if (command === 'ingest-13f') {
   );
 
 } else if (command === 'worker') {
-  logger.info('Command: worker');
-  await startWorker();
+  // --once flag or WORKER_MODE=once env var: drain queue once and exit (used by CI/GitHub Actions)
+  const onceMode = flags.includes('--once') || process.env.WORKER_MODE === 'once';
+  if (onceMode) {
+    logger.info('Command: worker --once');
+    await startWorkerOnce();
+  } else {
+    logger.info('Command: worker');
+    await startWorker();
+  }
 
 } else {
   console.error(`Unknown command: ${command ?? '(none)'}`);
   console.error('Usage:');
-  console.error('  node src/index.js ingest-13f [--limit N]   # one-shot run');
-  console.error('  node src/index.js worker                    # long-running worker');
+  console.error('  node src/index.js ingest-13f [--limit N]   # one-shot 13F run');
+  console.error('  node src/index.js worker                    # long-running poll loop (local)');
+  console.error('  node src/index.js worker --once             # drain queue once and exit (CI)');
   process.exit(1);
 }

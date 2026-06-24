@@ -1,8 +1,8 @@
-import { hostname }      from 'os';
-import { supabase }      from '../supabaseClient.js';
-import { logger }        from '../utils/logger.js';
-import { runConnector }  from '../engine/runConnector.js';
-import { runScheduler }  from './scheduler.js';
+import { hostname }                        from 'os';
+import { supabase }                        from '../supabaseClient.js';
+import { logger }                          from '../utils/logger.js';
+import { runConnector }                    from '../engine/runConnector.js';
+import { runScheduler, runSchedulerOnce }  from './scheduler.js';
 
 const POLL_INTERVAL_MS      = parseInt(process.env.WORKER_POLL_MS ?? '10000', 10);
 const STALE_THRESHOLD_MS    = 5 * 60 * 1000;  // 5 min — reliable with 30s heartbeat
@@ -146,6 +146,7 @@ async function executeJob(run) {
       .eq('status', 'running'); // no-op if job already finished
   }, HEARTBEAT_INTERVAL_MS);
 
+  let succeeded = false;
   try {
     const stats = await runConnector(jobType, config, { supabase, logger, onProgress });
 
@@ -160,6 +161,7 @@ async function executeJob(run) {
       .eq('id', run.id);
 
     logger.info(`[${workerId}] Run ${run.id} completed — ${JSON.stringify(stats)}`);
+    succeeded = true;
   } catch (err) {
     logLines.push(`[${new Date().toISOString()}] ERROR: ${err.message}`);
     await supabase
@@ -178,6 +180,7 @@ async function executeJob(run) {
   }
 
   currentRunId = null;
+  return succeeded;
 }
 
 // ── Graceful shutdown ─────────────────────────────────────────────────────────
@@ -205,7 +208,50 @@ async function gracefulShutdown(signal) {
   process.exit(0);
 }
 
-// ── Main entry point ──────────────────────────────────────────────────────────
+// ── Once mode ─────────────────────────────────────────────────────────────────
+// Used by GitHub Actions and CI: run one scheduler pass, drain the queue,
+// then exit cleanly. No infinite polling loop.
+//
+// Exit codes:
+//   0 — queue drained successfully (even if individual jobs failed, unless
+//       FAIL_ON_JOB_ERROR=true is set — useful for surfacing failures in CI)
+//   1 — FAIL_ON_JOB_ERROR=true AND at least one job returned a failed status
+
+export async function startWorkerOnce() {
+  logger.info(`[${workerId}] Worker starting (once mode) — will drain queue then exit`);
+
+  process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+  await reaperOnce();
+  await runSchedulerOnce(); // enqueue any jobs whose schedule is now due
+
+  let processed  = 0;
+  let anyFailed  = false;
+
+  while (!shuttingDown) {
+    const run = await claimNextJob();
+    if (!run) break; // queue is empty — we're done
+
+    currentRunId = run.id;
+    const ok = await executeJob(run);
+    if (!ok) anyFailed = true;
+    processed++;
+  }
+
+  logger.info(
+    `[${workerId}] Once mode complete — processed ${processed} job(s)` +
+    (anyFailed ? ', some failed (see job_runs for details)' : ', all succeeded')
+  );
+
+  if (anyFailed && process.env.FAIL_ON_JOB_ERROR === 'true') {
+    logger.error('[worker] Exiting 1 — FAIL_ON_JOB_ERROR is set and at least one job failed');
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
+// ── Poll mode (default) ───────────────────────────────────────────────────────
 
 export async function startWorker() {
   logger.info(`[${workerId}] Worker starting up — poll interval ${POLL_INTERVAL_MS}ms`);

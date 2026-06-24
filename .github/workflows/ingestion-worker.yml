@@ -1,0 +1,74 @@
+# ── Ingestion Worker — GitHub Actions ────────────────────────────────────────
+#
+# Runs the ingestion worker in "once" mode on a daily schedule.
+# On each invocation the worker:
+#   1. Resets any stale (crashed) runs back to queued
+#   2. Runs one scheduler pass — enqueues any job_definition schedules that are due
+#   3. Drains the queue (processes all queued runs sequentially)
+#   4. Exits 0 (or 1 if FAIL_ON_JOB_ERROR=true and a job failed)
+#
+# DEPLOY SAFETY: this workflow has NO 'push' trigger.
+# Pushing code NEVER runs a job. The next scheduled run picks up the new code
+# automatically (Actions always checks out the latest main). There is no
+# always-on worker process that could be interrupted mid-job by a deploy.
+#
+# Required GitHub repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL         — Supabase project URL (e.g. https://xyz.supabase.co)
+#   SUPABASE_SERVICE_KEY — service_role key (bypasses RLS — keep this secret)
+#   SEC_USER_AGENT       — "AppName/1.0 (contact@you.com)" required by SEC EDGAR
+#
+# These secrets MUST be set before the first scheduled run. Without them the
+# worker will start but immediately fail when it can't connect to Supabase or
+# the SEC rejects requests without a valid User-Agent.
+
+name: Ingestion Worker
+
+on:
+  # Daily at 07:00 UTC (3:00 AM ET / midnight PT) — well outside US market hours.
+  # Daily cadence catches any due schedule; most days the scheduler pass finds
+  # nothing due and the worker exits in seconds after draining the (empty) queue.
+  schedule:
+    - cron: '0 7 * * *'
+
+  # Manual trigger: run from the GitHub Actions UI without needing a laptop.
+  # Useful for ad-hoc backfills, debugging, and testing before the schedule fires.
+  workflow_dispatch:
+
+# Prevent overlapping runs. If a scheduled run is still in progress when the
+# next one fires, let the in-flight run finish — don't cancel it.
+concurrency:
+  group: ingestion-worker
+  cancel-in-progress: false
+
+jobs:
+  run-ingestion:
+    name: Drain ingestion queue
+    runs-on: ubuntu-latest
+    timeout-minutes: 60  # hard ceiling — prevents a hung job from blocking future runs
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ingestion/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ingestion
+        run: npm ci
+
+      - name: Run worker (once mode)
+        working-directory: ingestion
+        run: npm run worker:once
+        env:
+          SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SEC_USER_AGENT:       ${{ secrets.SEC_USER_AGENT }}
+          # FAIL_ON_JOB_ERROR: exit 1 if any job_run ends in 'failed' status.
+          # This surfaces ingestion failures as a red X in the Actions tab and
+          # can trigger GitHub's built-in email notification for failed workflows.
+          FAIL_ON_JOB_ERROR: 'true'

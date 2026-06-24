@@ -18,9 +18,10 @@
  *   Private fund: <Item7A>           empty string = no; object = yes
  */
 
-import { createGunzip } from 'zlib';
-import { XMLParser }    from 'fast-xml-parser';
-import { inferSegment } from '../../engine/computeSignals.js';
+import { createGunzip }      from 'zlib';
+import { XMLParser }          from 'fast-xml-parser';
+import { inferSegment }       from '../../engine/computeSignals.js';
+import { resolveAdvBulkUrl }  from './resolveBulkUrl.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -298,19 +299,22 @@ const advConnector = {
   kind:         'discovery',
 
   async discover(config, ctx) {
-    const { advBulkUrl, limit = 50, minAum } = config;
+    const { limit = 50, minAum } = config;
     const { logger } = ctx;
 
-    if (!advBulkUrl) {
-      throw new Error(
-        'ADV jobs require advBulkUrl in config.\n' +
-        'Get the current quarterly bulk file from https://adviserinfo.sec.gov/compilation\n' +
-        'then paste the direct URL in the Run Now modal, or save it in the job definition.'
-      );
+    let bulkUrl;
+    if (config.advBulkUrl) {
+      // Manual override — explicit URL always wins (Run Now modal or saved config)
+      bulkUrl = config.advBulkUrl;
+      logger.info(`ADV: using manually-specified bulk URL: ${bulkUrl}`);
+    } else {
+      // Autonomous/scheduled run — resolve the URL automatically by probing
+      // date-based SEC filenames for the most recent published file.
+      bulkUrl = await resolveAdvBulkUrl(ctx);
     }
 
     const userAgent = process.env.SEC_USER_AGENT ?? 'lime-crm-ingestion/1.0 (contact@limex.com)';
-    return streamFirms(advBulkUrl, userAgent, limit, minAum, logger);
+    return streamFirms(bulkUrl, userAgent, limit, minAum, logger);
   },
 
   async fetch(filer, _config, _ctx) {

@@ -9,7 +9,8 @@
   "scripts": {
     "ingest:13f": "node src/index.js ingest-13f",
     "ingest:13f:test": "node src/index.js ingest-13f --limit 5",
-    "worker": "node src/index.js worker"
+    "worker": "node src/index.js worker",
+    "worker:once": "node src/index.js worker --once"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

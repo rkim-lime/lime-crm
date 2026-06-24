@@ -159,6 +159,7 @@ async function checkSchedules() {
   }
 }
 
+/** Long-running mode: check immediately then every 60s forever. */
 export function runScheduler() {
   logger.info('Scheduler: started — checking every 60s');
   checkSchedules().catch(err => logger.error(`Scheduler: ${err.message}`));
@@ -166,4 +167,10 @@ export function runScheduler() {
     () => checkSchedules().catch(err => logger.error(`Scheduler: ${err.message}`)),
     SCHEDULER_INTERVAL_MS
   );
+}
+
+/** Once mode: run a single scheduler pass and return. */
+export async function runSchedulerOnce() {
+  logger.info('Scheduler: running one-pass check for due schedules');
+  await checkSchedules();
 }
