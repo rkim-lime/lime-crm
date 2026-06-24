@@ -105,23 +105,42 @@ Example:
 
 ```
 src/
-  index.js              — CLI entry point (ingest-13f | worker)
-  config.js             — loads .env, validates required vars
-  supabaseClient.js     — Supabase client with service_role key
-  sec/
-    edgarClient.js      — EDGAR API: search, submissions, filing docs
-    parse13F.js         — 13F XML → structured holdings
-  pipeline/
-    ingest13F.js        — orchestrates: resolve → fetch → parse → upsert → score
-    computeSignals.js   — AUM, turnover, asset mix, segment, ICP filter
-    fitScore.js         — loads weights from DB, computes prospect_fit score
-    resolveFirm.js      — 5-step dedup: CIK match → fuzzy name → new
+  index.js                    — CLI entry point (ingest-13f | worker)
+  config.js                   — loads .env, validates required vars
+  supabaseClient.js           — Supabase client with service_role key
+  connectors/
+    types.js                  — JSDoc typedefs: FirmSignal, Connector, ConnectorContext
+    registry.js               — connector registry (Map + register/get/list)
+    index.js                  — imports and registers all connectors at startup
+    _shared/
+      edgarClient.js          — EDGAR HTTP client (shared across SEC connectors)
+    ingest_13f/
+      index.js                — 13F connector: discover filers, fetch quarters, normalize signals
+      parse13F.js             — 13F XML → structured holdings
+  engine/
+    runConnector.js           — source-agnostic pipeline: discover → fetch → normalize → resolve → write
+    resolveFirm.js            — 5-step dedup: CIK match → fuzzy name → new
+    computeSignals.js         — AUM, turnover, asset mix, segment, ICP filter
+    fitScore.js               — loads weights from DB, computes prospect_fit score
+    writers.js                — DB write helpers: ICP config, filings, sources, fit score
   worker/
-    worker.js           — poll loop, job claiming, execution, graceful shutdown
-    scheduler.js        — checks job_schedules, enqueues due runs, computes next_run_at
+    worker.js                 — poll loop, job claiming, execution, graceful shutdown
+    scheduler.js              — checks job_schedules, enqueues due runs, computes next_run_at
   utils/
-    logger.js           — timestamped console logger
+    logger.js                 — timestamped console logger
 ```
+
+### Adding a new connector
+
+1. Create `src/connectors/<key>/index.js` implementing the `Connector` interface from `types.js`:
+   - `key` — must match the `job_type` value in `job_definitions`
+   - `discover(config, ctx)` — return array of `{ cik, firmName }` filers to process
+   - `fetch(filer, config, ctx)` — return array of `Quarter` objects (newest first)
+   - `normalize(filer, quarters)` — return a `FirmSignal` with all computed signals
+2. Register it in `src/connectors/index.js` via `register(connector)`.
+3. Seed a `job_definitions` row with the matching `job_type`.
+
+The engine (`runConnector`) handles firm resolution, dedup queue, DB writes, fit scoring, and ICP filtering automatically for any connector.
 
 ## Rate limiting
 

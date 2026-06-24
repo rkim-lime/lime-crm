@@ -1,8 +1,8 @@
-import { hostname }    from 'os';
-import { supabase }    from '../supabaseClient.js';
-import { logger }      from '../utils/logger.js';
-import { ingest13F }   from '../pipeline/ingest13F.js';
-import { runScheduler } from './scheduler.js';
+import { hostname }      from 'os';
+import { supabase }      from '../supabaseClient.js';
+import { logger }        from '../utils/logger.js';
+import { runConnector }  from '../engine/runConnector.js';
+import { runScheduler }  from './scheduler.js';
 
 const POLL_INTERVAL_MS      = parseInt(process.env.WORKER_POLL_MS ?? '10000', 10);
 const STALE_THRESHOLD_MS    = 5 * 60 * 1000;  // 5 min — reliable with 30s heartbeat
@@ -77,15 +77,19 @@ async function claimNextJob() {
 async function executeJob(run) {
   logger.info(`[${workerId}] Executing run ${run.id}`);
 
-  // Resolve config: snapshot first, fall back to definition
-  let config = run.config_snapshot ?? {};
-  if (!Object.keys(config).length && run.job_definition_id) {
+  // Resolve config + job_type: snapshot first, fall back to definition
+  let config  = run.config_snapshot ?? {};
+  let jobType = 'ingest_13f'; // safe default (only one connector today)
+  if (run.job_definition_id) {
     const { data: def } = await supabase
       .from('job_definitions')
       .select('config, job_type')
       .eq('id', run.job_definition_id)
       .maybeSingle();
-    config = def?.config ?? {};
+    if (def) {
+      if (!Object.keys(config).length) config = def.config ?? {};
+      jobType = def.job_type ?? jobType;
+    }
   }
 
   const logLines   = [];
@@ -99,7 +103,7 @@ async function executeJob(run) {
     lastFlush = Date.now();
   };
 
-  // onProgress is called by ingest13F after each filer
+  // onProgress is called by runConnector after each filer
   const onProgress = async ({ stats, logLine }) => {
     if (logLine) logLines.push(`[${new Date().toISOString()}] ${logLine}`);
     if (Date.now() - lastFlush >= 5000) await flushProgress(stats);
@@ -115,13 +119,7 @@ async function executeJob(run) {
   }, HEARTBEAT_INTERVAL_MS);
 
   try {
-    const stats = await ingest13F({
-      limit:      config.limit      ?? 50,
-      minAum:     config.minAum     ?? null,
-      sortBy:     config.sortBy     ?? null,
-      filerTypes: config.filerTypes ?? null,
-      onProgress,
-    });
+    const stats = await runConnector(jobType, config, { supabase, logger, onProgress });
 
     await supabase
       .from('job_runs')

@@ -1,5 +1,5 @@
-import { config } from '../config.js';
-import { logger }  from '../utils/logger.js';
+import { config } from '../../config.js';
+import { logger }  from '../../utils/logger.js';
 
 const EDGAR_BASE = 'https://www.sec.gov';
 const EDGAR_DATA = 'https://data.sec.gov';
