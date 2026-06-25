@@ -16,6 +16,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@sentry/node": "^10.61.0",
     "@supabase/supabase-js": "^2.39.0",
     "cron-parser": "^4.9.0",
     "dotenv": "^16.3.1",

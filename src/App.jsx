@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { Analytics as VercelAnalytics } from '@vercel/analytics/react';
 import { AuthProvider } from './hooks/useAuth.jsx';
+import AppErrorBoundary from './components/ErrorBoundary.jsx';
 import ProtectedRoute from './components/ProtectedRoute';
 import RoleGate      from './components/RoleGate';
 
@@ -46,6 +48,7 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
+    <AppErrorBoundary>
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <BrowserRouter>
@@ -127,5 +130,7 @@ export default function App() {
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
+    <VercelAnalytics />
+    </AppErrorBoundary>
   );
 }

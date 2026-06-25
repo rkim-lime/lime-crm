@@ -1,3 +1,4 @@
+import './instrument.js';                 // init Sentry before any job code runs
 import { config }                        from './config.js';    // validates env vars at startup
 import { runConnector }                  from './engine/runConnector.js';
 import { startWorker, startWorkerOnce }  from './worker/worker.js';

@@ -1,4 +1,5 @@
 import { hostname }                        from 'os';
+import * as Sentry                         from '@sentry/node';
 import { supabase }                        from '../supabaseClient.js';
 import { logger }                          from '../utils/logger.js';
 import { runConnector }                    from '../engine/runConnector.js';
@@ -163,6 +164,16 @@ async function executeJob(run) {
     logger.info(`[${workerId}] Run ${run.id} completed — ${JSON.stringify(stats)}`);
     succeeded = true;
   } catch (err) {
+    // Report to Sentry with job context — NOT config (may contain advBulkUrl etc.)
+    Sentry.withScope((scope) => {
+      scope.setTag('job_type', jobType ?? 'unknown');
+      scope.setContext('job_run', {
+        run_id:            run.id,
+        job_definition_id: run.job_definition_id,
+      });
+      Sentry.captureException(err);
+    });
+
     logLines.push(`[${new Date().toISOString()}] ERROR: ${err.message}`);
     await supabase
       .from('job_runs')
@@ -205,6 +216,7 @@ async function gracefulShutdown(signal) {
       .eq('status', 'running');
   }
 
+  await Sentry.flush(2000);
   process.exit(0);
 }
 
@@ -244,10 +256,13 @@ export async function startWorkerOnce() {
     (anyFailed ? ', some failed (see job_runs for details)' : ', all succeeded')
   );
 
+  await Sentry.flush(2000); // ensure captured exceptions are sent before exit
+
   if (anyFailed && process.env.FAIL_ON_JOB_ERROR === 'true') {
     logger.error('[worker] Exiting 1 — FAIL_ON_JOB_ERROR is set and at least one job failed');
     process.exit(1);
   }
+  await Sentry.flush(2000);
   process.exit(0);
 }
 

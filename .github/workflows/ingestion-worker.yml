@@ -16,6 +16,7 @@
 #   SUPABASE_URL         — Supabase project URL (e.g. https://xyz.supabase.co)
 #   SUPABASE_SERVICE_KEY — service_role key (bypasses RLS — keep this secret)
 #   SEC_USER_AGENT       — "AppName/1.0 (contact@you.com)" required by SEC EDGAR
+#   SENTRY_DSN           — Sentry DSN for the Node/worker project (optional but recommended)
 #
 # These secrets MUST be set before the first scheduled run. Without them the
 # worker will start but immediately fail when it can't connect to Supabase or
@@ -68,6 +69,7 @@ jobs:
           SUPABASE_URL:         ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SEC_USER_AGENT:       ${{ secrets.SEC_USER_AGENT }}
+          SENTRY_DSN:           ${{ secrets.SENTRY_DSN }}
           # FAIL_ON_JOB_ERROR: exit 1 if any job_run ends in 'failed' status.
           # This surfaces ingestion failures as a red X in the Actions tab and
           # can trigger GitHub's built-in email notification for failed workflows.
