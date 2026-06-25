@@ -80,17 +80,21 @@ export function inferSegment(firmName) {
 export function computePassesICP(prospect, icpConfig) {
   if (!icpConfig) return true;
 
-  const aum       = prospect.estimated_aum_usd      ?? 0;
-  const turnover  = prospect.portfolio_turnover_pct  ?? 0;
-  const positions = prospect.position_count          ?? 0;
-  const segment   = prospect.inferred_segment        ?? '';
+  const aum            = prospect.estimated_aum_usd      ?? 0;
+  const turnover       = prospect.portfolio_turnover_pct  ?? 0;
+  const positions      = prospect.position_count          ?? 0;
+  const segment        = prospect.inferred_segment        ?? '';
+  const hasPrivateFund = prospect.advFlags?.hasPrivateFundClients ?? false;
 
   const excludedSegments = icpConfig.excluded_segments  ?? [];
   const minAum           = icpConfig.min_aum_usd        ?? 0;
   const minTurnover      = icpConfig.min_turnover_pct   ?? 0;
   const minPositions     = icpConfig.min_position_count ?? 0;
 
-  if (aum       < minAum)                    return false;
+  // Private-fund-only advisers don't report SMA AUM (regulatoryAum is null,
+  // normalized to 0). Bypass AUM threshold so large private-fund managers
+  // aren't incorrectly filtered.
+  if (!hasPrivateFund && aum < minAum)       return false;
   if (turnover  < minTurnover)               return false;
   if (positions < minPositions)              return false;
   if (excludedSegments.includes(segment))    return false;

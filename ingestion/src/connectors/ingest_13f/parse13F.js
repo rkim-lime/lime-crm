@@ -4,6 +4,7 @@ const parser = new XMLParser({
   ignoreAttributes: false,
   removeNSPrefix:   true,
   isArray:          (name) => name === 'infoTable',
+  parseTagValue:    false, // Preserve leading zeros in CUSIPs (e.g. 037833100 → Apple)
 });
 
 /**
