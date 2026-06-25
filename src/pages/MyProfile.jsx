@@ -130,6 +130,16 @@ export default function MyProfile() {
             )}
           </div>
         </form>
+
+        {/* temp: remove after Sentry verification */}
+        <div style={{ marginTop: 32, paddingTop: 24, borderTop: '1px solid var(--border)' }}>
+          <button
+            onClick={() => { throw new Error('Sentry frontend test ' + new Date().toISOString()); }}
+            style={{ fontSize: 12, padding: '4px 10px', opacity: 0.5 }}
+          >
+            Test Sentry (temp)
+          </button>
+        </div>
       </div>
     </Layout>
   );
