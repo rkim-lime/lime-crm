@@ -95,6 +95,38 @@ export function computeNextRunAt(schedule) {
 async function checkSchedules() {
   const now = new Date().toISOString();
 
+  // ── Phase 1: bootstrap next_run_at for freshly-seeded schedules ──────────────
+  // Rows with next_run_at = NULL are excluded by the .lte() due-check below, so
+  // they would never fire without this pass. computeNextRunAt always calls
+  // cron-parser's .next() / preset-recurrence logic relative to NOW, so the
+  // computed date is always in the future — a freshly seeded schedule will NOT
+  // enqueue a run immediately on first bootstrap; Phase 2 below will only pick
+  // it up on the NEXT scheduler pass when next_run_at <= now().
+  const { data: uninitialized, error: uninitErr } = await supabase
+    .from('job_schedules')
+    .select('id, schedule_type, cron_expression, recurrence, hour_of_day, '
+          + 'minute_of_hour, timezone, day_of_week, day_of_month')
+    .eq('is_active', true)
+    .is('next_run_at', null);
+
+  if (uninitErr) {
+    logger.error(`Scheduler: failed to fetch uninitialized schedules — ${uninitErr.message}`);
+  } else {
+    for (const sched of (uninitialized ?? [])) {
+      const nextRunAt = computeNextRunAt(sched);
+      if (!nextRunAt) {
+        logger.warn(`Scheduler: schedule ${sched.id} has null next_run_at and could not compute one — check its configuration`);
+        continue;
+      }
+      await supabase
+        .from('job_schedules')
+        .update({ next_run_at: nextRunAt })
+        .eq('id', sched.id);
+      logger.info(`Scheduler: bootstrapped next_run_at for schedule ${sched.id} → ${nextRunAt}`);
+    }
+  }
+
+  // ── Phase 2: enqueue any schedules that are now due ───────────────────────────
   const { data: schedules, error } = await supabase
     .from('job_schedules')
     .select(`
