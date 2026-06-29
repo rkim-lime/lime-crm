@@ -59,18 +59,22 @@ function buildFirmSignalADV(prospect, rawSignals) {
   // ADV: estimated_aum_usd stored in rawSignals is the engine-safe value (0 when null).
   // Treat 0 as null for regulatory AUM (private-fund-only advisers have no AUM to report).
   const stored = rawSignals.estimated_aum_usd ?? prospect.estimated_aum_usd ?? 0;
+
+  // regulatoryAum, clientTypes, advFlags are now persisted in rawSignals by
+  // buildRawSignals() (runConnector.js). Fall back to safe defaults for rows
+  // written before this fix was deployed (missing key → pre-fix row).
   return {
     source:                 'sec_adv',
     cik:                    null,
     crdNumber:              prospect.crd_number ?? null,
     firmName:               prospect.firm_name,
-    regulatoryAum:          stored > 0 ? stored : null,
+    regulatoryAum:          'regulatoryAum' in rawSignals
+                              ? rawSignals.regulatoryAum
+                              : stored > 0 ? stored : null,
     estimated_aum_usd:      stored,
-    // client_types and has_private_fund_clients are not stored in rawSignals;
-    // they are absent here and will be populated on the next live ADV ingest.
-    clientTypes:            [],
-    advFlags:               { hasPrivateFundClients: false },
-    inferred_segment:       inferSegment(prospect.firm_name), // re-derive; don't use stale column
+    clientTypes:            rawSignals.clientTypes ?? [],
+    advFlags:               rawSignals.advFlags    ?? { hasPrivateFundClients: false },
+    inferred_segment:       inferSegment(prospect.firm_name),
     quarters:               [],
   };
 }

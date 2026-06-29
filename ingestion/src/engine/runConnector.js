@@ -12,6 +12,36 @@ import { normalizeFirm, loadNormalizationRefs } from './normalize.js';
 import { supabase as defaultSupabase } from '../supabaseClient.js';
 import { logger   as defaultLogger   } from '../utils/logger.js';
 
+// ── Signal assembly ───────────────────────────────────────────────────────────
+//
+// Structural/identity fields are excluded from prospect_sources.signals because
+// they are stored in dedicated columns elsewhere (prospects, prospect_sources).
+// Every other key a connector emits on its FirmSignal is treated as a signal
+// payload and persisted automatically.
+//
+// CONTRACT: future connectors do NOT need to edit this file or runConnector.js
+// to get new signal fields stored — just emit them on the FirmSignal object and
+// they land in prospect_sources.signals without any allowlist update.
+export const STRUCTURAL_KEYS = new Set([
+  'firmName',         // → prospects.firm_name
+  'source',           // → prospect_sources.source
+  'source_url',       // → prospect_sources.source_url
+  'cik',              // → prospects.cik
+  'crdNumber',        // → prospects.crd_number
+  'secNumber',        // identity only (no dedicated column yet)
+  'quarters',         // → prospect_filings / prospect_holdings
+  'inferred_segment', // recomputed from firmName in normalize.js; stale cached value not stored
+]);
+
+export function buildRawSignals(signal) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(signal).filter(([k]) => !STRUCTURAL_KEYS.has(k)),
+    ),
+    computed_at: new Date().toISOString(),
+  };
+}
+
 export async function runConnector(connectorKey, config = {}, ctx = {}) {
   const supabase   = ctx.supabase   ?? defaultSupabase;
   const logger     = ctx.logger     ?? defaultLogger;
@@ -71,14 +101,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
         continue;
       }
 
-      const rawSignals = {
-        estimated_aum_usd:      signal.estimated_aum_usd,
-        position_count:         signal.position_count,
-        portfolio_turnover_pct: signal.portfolio_turnover_pct,
-        equities_pct:           signal.equities_pct,
-        options_present:        signal.options_present,
-        computed_at:            new Date().toISOString(),
-      };
+      const rawSignals = buildRawSignals(signal);
 
       const basePayload = {
         firm_name:              signal.firmName,
