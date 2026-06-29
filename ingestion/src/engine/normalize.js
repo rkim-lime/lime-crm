@@ -6,6 +6,8 @@
  * a pre-loaded refs object (load once per connector run, reuse per firm).
  */
 
+import { inferSegment } from './computeSignals.js';
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const CONFIDENCE_RANK = { high: 3, medium: 2, low: 1 };
@@ -82,15 +84,16 @@ export function extractSignals(firmSignal) {
       };
     }
 
-    if (firmSignal.inferred_segment) {
-      signals.segment_inferred = {
-        value:      firmSignal.inferred_segment,
-        basis:      '13f_name_heuristic',
-        source:     'sec_13f',
-        as_of:      asOf,
-        confidence: 'low',
-      };
-    }
+    // Always recompute from the firm name using the current heuristic.
+    // Do NOT read firmSignal.inferred_segment — it may be a stale connector-cached
+    // value from a previous ingest run before the heuristic was updated.
+    signals.segment_inferred = {
+      value:      inferSegment(firmSignal.firmName),
+      basis:      '13f_name_heuristic',
+      source:     'sec_13f',
+      as_of:      asOf,
+      confidence: 'low',
+    };
 
   } else if (src === 'sec_adv') {
     // Use regulatoryAum (null = not reported by private-fund-only advisers),

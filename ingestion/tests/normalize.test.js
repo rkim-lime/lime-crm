@@ -59,7 +59,7 @@ function firm13F(overrides = {}) {
     source:                 'sec_13f',
     cik:                    '0001234567',
     crdNumber:              null,
-    firmName:               'Apex Capital',
+    firmName:               'Apex Hedge Capital',
     estimated_aum_usd:      5_000_000_000,
     position_count:         120,
     portfolio_turnover_pct: 42.5,
@@ -127,6 +127,27 @@ describe('extractSignals — 13F', () => {
     expect(sigs.aum_adv_regulatory).toBeUndefined();
     expect(sigs.client_types).toBeUndefined();
     expect(sigs.has_private_fund_clients).toBeUndefined();
+  });
+
+  it('re-derives segment from firmName, ignores stale inferred_segment field (Ironwood → wealth_manager)', () => {
+    // Simulates a firm that was originally ingested before the heuristic improvement:
+    // the connector stored inferred_segment='hedge_fund', but the firm name clearly
+    // identifies it as a wealth manager. normalize.js must ignore the cached field.
+    const sigs = extractSignals(firm13F({
+      firmName:         'Ironwood Wealth Management',
+      inferred_segment: 'hedge_fund',  // stale — should be ignored
+    }));
+    expect(sigs.segment_inferred.value).toBe('wealth_manager');
+    expect(sigs.segment_inferred.basis).toBe('13f_name_heuristic');
+    expect(sigs.segment_inferred.confidence).toBe('low');
+  });
+
+  it('re-derives segment from firmName for Sanders Morris Harris → other', () => {
+    const sigs = extractSignals(firm13F({
+      firmName:         'SANDERS MORRIS HARRIS',
+      inferred_segment: 'hedge_fund',  // stale
+    }));
+    expect(sigs.segment_inferred.value).toBe('other');
   });
 });
 
