@@ -25,6 +25,7 @@
 
 import { supabase } from '../src/supabaseClient.js';
 import { normalizeFirm, loadNormalizationRefs } from '../src/engine/normalize.js';
+import { inferSegment } from '../src/engine/computeSignals.js';
 
 const PAGE_SIZE = 100;
 const DRY_RUN   = process.env.DRY_RUN === 'true';
@@ -49,7 +50,7 @@ function buildFirmSignal13F(prospect, rawSignals) {
     portfolio_turnover_pct: rawSignals.portfolio_turnover_pct ?? prospect.portfolio_turnover_pct ?? null,
     equities_pct:           rawSignals.equities_pct ?? prospect.equities_pct ?? 0,
     options_present:        rawSignals.options_present ?? prospect.options_present ?? false,
-    inferred_segment:       prospect.inferred_segment ?? 'hedge_fund',
+    inferred_segment:       inferSegment(prospect.firm_name), // re-derive; don't use stale column
     quarters:               [], // no quarter history in backfill; as_of will be null
   };
 }
@@ -69,7 +70,7 @@ function buildFirmSignalADV(prospect, rawSignals) {
     // they are absent here and will be populated on the next live ADV ingest.
     clientTypes:            [],
     advFlags:               { hasPrivateFundClients: false },
-    inferred_segment:       prospect.inferred_segment ?? 'hedge_fund',
+    inferred_segment:       inferSegment(prospect.firm_name), // re-derive; don't use stale column
     quarters:               [],
   };
 }
