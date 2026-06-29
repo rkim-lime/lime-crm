@@ -8,6 +8,7 @@ import {
   upsertSource,
   saveFitScore,
 }                              from './writers.js';
+import { normalizeFirm, loadNormalizationRefs } from './normalize.js';
 import { supabase as defaultSupabase } from '../supabaseClient.js';
 import { logger   as defaultLogger   } from '../utils/logger.js';
 
@@ -37,6 +38,9 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
         + `excluded segments: [${(icpConfig.excluded_segments ?? []).join(', ')}]`
       : 'ICP config not found — all prospects will pass ICP filter'
   );
+
+  // Load normalization reference tables once — reused for every firm in this run
+  const normRefs = await loadNormalizationRefs(supabase);
 
   const connCtx = { supabase, logger, config, onProgress };
   const filers  = await connector.discover(config, connCtx);
@@ -237,6 +241,13 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
 
       await writeFilingsAndHoldings(supabase, logger, prospectId, signal.cik, signal.quarters, stats, prefix);
       await saveFitScore(supabase, prospectId, basePayload);
+
+      // Normalize: derive Layer 2 (per-signal provenance) + Layer 3 (canonical fields).
+      // Account-match path normalizes the account; all other paths normalize the prospect.
+      const entityRef = resolution.resolution === 'account_match'
+        ? { prospectId, accountId: resolution.accountId }
+        : { prospectId };
+      await normalizeFirm({ supabase, logger }, entityRef, signal, normRefs);
 
       if (onProgress) {
         const logLine = `${filer.firmName} — ${resolution.resolution}`
