@@ -23,20 +23,11 @@
  *   SUPABASE_URL=... SUPABASE_SERVICE_KEY=... node scripts/backfill-normalize.js
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../src/supabaseClient.js';
 import { normalizeFirm, loadNormalizationRefs } from '../src/engine/normalize.js';
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
-const PAGE_SIZE    = 100;
-const DRY_RUN      = process.env.DRY_RUN === 'true';
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_KEY');
-  process.exit(1);
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+const PAGE_SIZE = 100;
+const DRY_RUN   = process.env.DRY_RUN === 'true';
 const logger   = {
   warn:  (...a) => console.warn('[WARN]', ...a),
   info:  (...a) => console.log('[INFO]', ...a),
@@ -157,7 +148,7 @@ async function backfillAccounts(normRefs) {
     // Load accounts that have at least one SEC signal (cik or crd_number set)
     const { data: accounts, error } = await supabase
       .from('accounts')
-      .select('id, cik, crd_number, firm_name')
+      .select('id, name, cik, crd_number')
       .or('cik.not.is.null,crd_number.not.is.null')
       .range(offset, offset + PAGE_SIZE - 1)
       .order('id', { ascending: true });
@@ -196,7 +187,7 @@ async function backfillAccounts(normRefs) {
             // Build synthetic signal using account's firm identity + audit prospect's signals
             const signalBase = {
               ...auditProspect,
-              firm_name:  account.firm_name ?? auditProspect.firm_name,
+              firm_name:  account.name ?? auditProspect.firm_name,
               cik:        account.cik ?? auditProspect.cik,
               crd_number: account.crd_number ?? auditProspect.crd_number,
             };
