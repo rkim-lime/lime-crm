@@ -198,10 +198,22 @@ describe('mergeSignal', () => {
     expect(mergeSignal(newer, older)).toBe(newer);
   });
 
-  it('same confidence and as_of: keeps existing', () => {
+  it('same confidence and identical as_of: incoming wins (fresh computation overwrites cache)', () => {
     const e = { value: 1, confidence: 'high', as_of: '2024-03-31', source: 'sec_13f', basis: 'a' };
     const i = { value: 2, confidence: 'high', as_of: '2024-03-31', source: 'sec_13f', basis: 'a' };
-    expect(mergeSignal(e, i)).toBe(e);
+    expect(mergeSignal(e, i)).toBe(i);
+  });
+
+  it('same confidence, both as_of null: incoming wins (backfill re-normalization case)', () => {
+    const stale = { value: 'hedge_fund',    confidence: 'low', as_of: null, source: 'sec_13f', basis: '13f_name_heuristic' };
+    const fresh = { value: 'wealth_manager', confidence: 'low', as_of: null, source: 'sec_13f', basis: '13f_name_heuristic' };
+    expect(mergeSignal(stale, fresh)).toBe(fresh);
+  });
+
+  it('existing has as_of, incoming null: existing wins (dated signal beats undated)', () => {
+    const dated   = { value: 1, confidence: 'low', as_of: '2024-03-31', source: 'sec_13f', basis: 'a' };
+    const undated = { value: 2, confidence: 'low', as_of: null,         source: 'sec_13f', basis: 'a' };
+    expect(mergeSignal(dated, undated)).toBe(dated);
   });
 });
 

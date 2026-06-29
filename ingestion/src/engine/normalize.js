@@ -158,11 +158,16 @@ export function mergeSignal(existing, incoming) {
   if (ir > er) return incoming;
   if (ir < er) return existing;
 
-  // Same confidence — prefer more recent as_of date
-  if (incoming.as_of && (!existing.as_of || incoming.as_of > existing.as_of)) {
-    return incoming;
+  // Same confidence — prefer the signal with a more recent as_of.
+  // When both have dates, pick the newer one. When only one has a date, that one wins.
+  // When both are null (e.g. backfill re-processing), prefer incoming so fresh
+  // computation overwrites the cached value rather than silently keeping it.
+  if (existing.as_of && incoming.as_of) {
+    return incoming.as_of >= existing.as_of ? incoming : existing;
   }
-  return existing;
+  if (incoming.as_of) return incoming;
+  if (existing.as_of) return existing;
+  return incoming; // both null → fresh computation wins
 }
 
 /**
