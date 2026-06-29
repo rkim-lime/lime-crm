@@ -6,6 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { inferSegment } from '../src/engine/computeSignals.js';
 import {
   extractSignals,
   mergeSignal,
@@ -586,5 +587,78 @@ describe('normalizeFirm — DB writes', () => {
 
     expect(accountUpdates).toHaveProperty('aum_canonical');
     expect(accountUpdates).toHaveProperty('normalized_at');
+  });
+});
+
+
+// ── 13F segment heuristic — end-to-end through normalize layer ────────────────
+
+describe('13F segment heuristic — improved token rules', () => {
+  // Verify the extractSignals → deriveSegmentCanonical chain for specific firm names.
+  // All 13F segment inferences must stay confidence='low'.
+
+  function sigFor(firmName, overrides = {}) {
+    return extractSignals(firm13F({ firmName, inferred_segment: inferSegment(firmName), ...overrides }));
+  }
+
+  it.each([
+    ['Ironwood Wealth Management',    'wealth_manager'],
+    ['Capital Partners LP',           'asset_manager'],
+    ['Goldman Sachs Asset Management','asset_manager'],
+    ['Pacific Advisory Group',        'asset_manager'],
+    ['First National Bank',           'bank'],
+    ['Hartford Life Insurance',       'insurance'],
+    ['Rockefeller Family Office',     'family_office'],
+    ['Tiger Hedge Fund LP',           'hedge_fund'],
+    ['State Teachers Pension',        'pension'],
+    ['Apex Broker Dealer',            'broker_dealer'],
+    ['Quantitative Research LLC',     'quant_fund'],
+  ])('%s → segment_canonical=%s', (firmName, expectedCanonical) => {
+    const sigs = sigFor(firmName);
+    const seg = deriveSegmentCanonical(sigs, SEGMENT_MAPPINGS);
+    expect(seg.value).toBe(expectedCanonical);
+  });
+
+  it('all 13F name-heuristic segments have confidence=low in extracted signals', () => {
+    const names = [
+      'Ironwood Wealth Management', 'Capital Partners LP', 'First National Bank',
+      'Hartford Life Insurance', 'Rockefeller Family Office', 'Tiger Hedge Fund',
+      'Sanders Morris Harris', 'General Partners LLC',
+    ];
+    for (const name of names) {
+      const sigs = sigFor(name);
+      expect(sigs.segment_inferred?.confidence, name).toBe('low');
+    }
+  });
+
+  it('Sanders Morris Harris (no reliable token) → other', () => {
+    const sigs = sigFor('Sanders Morris Harris');
+    const seg = deriveSegmentCanonical(sigs, SEGMENT_MAPPINGS);
+    expect(seg.value).toBe('other');
+    expect(seg.confidence).toBe('low');
+  });
+
+  it('unknown firm name → segment_canonical=other, confidence=low', () => {
+    const sigs = sigFor('Acme Investments XYZ');
+    const seg = deriveSegmentCanonical(sigs, SEGMENT_MAPPINGS);
+    // 'other' may or may not be in taxonomy_mappings — fallback uses raw value
+    expect(seg.value).toBe('other');
+    expect(seg.confidence).toBe('low');
+  });
+
+  it('13F segment confidence stays low even after merge with lower-confidence existing signal', () => {
+    // Simulate a prior run stored the same firm with confidence=low
+    const existing = {
+      segment_inferred: { value: 'hedge_fund', source: 'sec_13f', confidence: 'low', as_of: null, basis: '13f_name_heuristic' },
+    };
+    const incoming = extractSignals(firm13F({ firmName: 'Ironwood Wealth Management', inferred_segment: 'wealth_manager' }));
+    const merged   = { ...existing };
+    for (const [k, v] of Object.entries(incoming)) merged[k] = mergeSignal(merged[k], v);
+
+    // New 13F run has same confidence (low) but a different value; recency tiebreak:
+    // incoming has as_of='2024-03-31', existing has as_of=null → incoming wins
+    const seg = deriveSegmentCanonical(merged, SEGMENT_MAPPINGS);
+    expect(seg.value).toBe('wealth_manager');
+    expect(seg.confidence).toBe('low');
   });
 });

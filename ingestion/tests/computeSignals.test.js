@@ -141,18 +141,76 @@ describe('assetMix', () => {
 
 describe('inferSegment', () => {
   it.each([
+    // Quant / systematic
     ['Quantitative Strategies LP',         'quant_fund'],
     ['Systematic Alpha Fund',              'quant_fund'],
-    ['Algorithmic Trading Partners',       'quant_fund'],
+    ['Algorithmic Trading Partners',       'quant_fund'],  // quant wins before prop/partners
+
+    // Prop trading
+    ['Proprietary Capital LLC',            'prop_trader'],
+    ['XYZ Trading Co',                     'prop_trader'],
+
+    // Wealth management
+    ['Ironwood Wealth Management',         'wealth_manager'],
+    ['Wealth Strategies Group',            'wealth_manager'],
+
+    // Banking / trust
+    ['First National Bank',                'bank'],
+    ['Commerce Trust Company',             'bank'],
+
+    // Broker / dealer / securities
+    ['XYZ Broker Dealer Securities Corp',  'broker_dealer'],
+    ['Atlantic Securities LLC',            'broker_dealer'],
+
+    // Pension / retirement
     ['State Teachers Pension Fund',        'pension'],
     ['University Endowment Foundation',    'pension'],
-    ['Proprietary Capital LLC',            'prop_trader'],
-    ['XYZ Broker Dealer Securities Corp',  'broker_dealer'],
-    ['General Partners LLC',               'hedge_fund'],   // default
-    ['',                                   'hedge_fund'],
-    [null,                                 'hedge_fund'],
+    ['City Retirement System',             'pension'],
+
+    // Insurance
+    ['Hartford Life Insurance Co',         'insurance'],
+    ['Zurich Re Assurance',                'insurance'],
+
+    // Family office
+    ['Rockefeller Family Office',          'family_office'],
+    ['Johnson Family Partners',            'family_office'],  // 'family' wins before 'partners'
+
+    // Explicit hedge fund signal
+    ['Tiger Hedge Fund Management',        'hedge_fund'],
+
+    // Advisory / RIA
+    ['Mercer Investment Advisors',         'asset_manager'],
+    ['Pacific Advisory Group',             'asset_manager'],
+
+    // Named management / capital firms
+    ['Goldman Sachs Asset Management',     'asset_manager'],
+    ['Fidelity Capital Management',        'asset_manager'],
+    ['General Partners LLC',               'asset_manager'],  // 'partners' token
+    ['Capital Partners',                   'asset_manager'],  // 'partners' + 'capital'
+    ['Blue Ridge Capital',                 'asset_manager'],  // 'capital' token
+
+    // No reliable signal → other (honest fallback, no longer defaults to hedge_fund)
+    ['Sanders Morris Harris',              'other'],
+    ['Acme Investments',                   'other'],  // 'investments' alone not a signal
+    ['',                                   'other'],
+    [null,                                 'other'],
   ])('%s → %s', (name, expected) => {
     expect(inferSegment(name)).toBe(expected);
+  });
+
+  it('all return values are valid canonical segment keys', () => {
+    const VALID = new Set([
+      'quant_fund','prop_trader','wealth_manager','bank','broker_dealer',
+      'pension','insurance','family_office','hedge_fund','asset_manager','other',
+    ]);
+    const samples = [
+      'Quantitative Research LLC', 'Prop Trading Inc', 'Wealth Group',
+      'National Bank', 'Broker Corp', 'Pension Trust', 'Insurance Co',
+      'Family Office Ltd', 'Hedge Capital', 'Financial Advisors', 'Unknown',
+    ];
+    for (const name of samples) {
+      expect(VALID, `inferSegment('${name}') not in valid set`).toContain(inferSegment(name));
+    }
   });
 });
 

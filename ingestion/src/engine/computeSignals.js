@@ -59,17 +59,57 @@ export function assetMix(holdings) {
 }
 
 /**
- * Infer institutional segment from firm name heuristics.
+ * Infer institutional segment from firm name tokens (case-insensitive).
+ *
+ * Rules are ordered most-specific → least-specific. All inferences are
+ * confidence='low' — a name is a weak signal. 'other' is returned when no
+ * token reliably indicates the firm type, rather than guessing 'hedge_fund'.
+ *
+ * ADV segment inference is overridden downstream by client-type data
+ * (confidence='high') — this function is the shared starting point.
  */
 export function inferSegment(firmName) {
   const n = (firmName ?? '').toLowerCase();
 
-  if (/quant(?:itative)?|systematic|algorithmic/.test(n)) return 'quant_fund';
-  if (/pension|retirement|endowment|foundation/.test(n))  return 'pension';
-  if (/prop(?:rietary)?|trading\s+co/.test(n))            return 'prop_trader';
-  if (/broker|dealer|securities(?:\s+corp)?/.test(n))     return 'broker_dealer';
+  // Quantitative / systematic / algorithmic (distinctive vocabulary)
+  if (/quant(?:itative)?|systematic|algorithmic/.test(n))  return 'quant_fund';
 
-  return 'hedge_fund'; // default for institutional 13F filers
+  // Proprietary trading ('prop' or 'proprietary', or 'trading co')
+  if (/prop(?:rietary)?|trading\s+co/.test(n))             return 'prop_trader';
+
+  // Wealth management (before generic 'management' / 'advisory' terms)
+  if (/wealth/.test(n))                                     return 'wealth_manager';
+
+  // Banking / trust companies
+  if (/\bbank\b|\btrust\b|national\s+ass(?:oc)?/.test(n)) return 'bank';
+
+  // Broker / dealer / securities firms
+  if (/broker|dealer|securities|brokerage/.test(n))        return 'broker_dealer';
+
+  // Pension / retirement / endowment
+  if (/pension|retirement|endowment|foundation/.test(n))   return 'pension';
+
+  // Insurance carriers and reinsurers
+  if (/insurance|assurance/.test(n))                       return 'insurance';
+
+  // Family offices ('family office' phrase preferred; 'family' alone is a signal in this context)
+  if (/family\s+office|\bfamily\b/.test(n))               return 'family_office';
+
+  // Explicit hedge-fund identifier
+  if (/\bhedge\b/.test(n))                                 return 'hedge_fund';
+
+  // Registered investment advisers (before generic management terms)
+  if (/advis(?:or|ory|er|ors|ers)/.test(n))              return 'asset_manager';
+
+  // Named asset/investment/capital management firms
+  if (/(?:capital|asset|investment)\s+management/.test(n)) return 'asset_manager';
+
+  // 'Partners' or 'capital' alone — common in fund names, ambiguous but
+  // less misleading than defaulting to hedge_fund
+  if (/\bpartners?\b|\bcapital\b/.test(n))                return 'asset_manager';
+
+  // No reliable signal — honest fallback
+  return 'other';
 }
 
 /**
