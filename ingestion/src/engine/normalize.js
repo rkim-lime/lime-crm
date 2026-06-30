@@ -6,7 +6,7 @@
  * a pre-loaded refs object (load once per connector run, reuse per firm).
  */
 
-import { inferSegment } from './computeSignals.js';
+import { inferSegment, deriveAdvSegment } from './computeSignals.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -108,27 +108,34 @@ export function extractSignals(firmSignal) {
       };
     }
 
-    if (firmSignal.inferred_segment) {
+    {
+      // Always recompute from primary evidence — never read firmSignal.inferred_segment.
+      // The backfill sets inferred_segment = inferSegment(firmName) (name heuristic only),
+      // which ignores clientTypes and advFlags entirely. Reading it here would produce
+      // wrong segments for backfill runs (Clearbridge → 'other', MK Capital → 'asset_manager').
+      // Same principle as 13F: recompute from the actual data, ignore the cached field.
+      const clientTypes  = firmSignal.clientTypes ?? [];
+      const hasPrivFund  = firmSignal.advFlags?.hasPrivateFundClients ?? false;
+      const segValue     = deriveAdvSegment(firmSignal.firmName, clientTypes, hasPrivFund);
+
       // Three-tier confidence for ADV segment:
       //   high   — clean, unconflicted client-type signal
-      //   medium — signals conflict with each other (see cases below), or flag-only
-      //   low    — no ADV client data at all; fell back to name heuristic
-      const hasPooled        = firmSignal.clientTypes?.includes('pooled_investment_vehicles') ?? false;
-      const hasInstitutional = firmSignal.clientTypes?.some(t => ['pension_plans', 'institutional'].includes(t)) ?? false;
-      const clientTypeDriven = (firmSignal.clientTypes?.length ?? 0) > 0 || (firmSignal.advFlags?.hasPrivateFundClients ?? false);
-      // isMixed:    pooled vehicles AND institutional clients both present → ambiguous structure
-      // isConflict: institutional clients present BUT hasPrivateFundClients=true
-      //             (Bluescape/Tremont pattern — pension clients + private-fund flag conflict;
-      //              institutional client type wins for segment, but confidence is medium)
-      // isFlagOnly: private-fund flag set, no client-type data — best guess with incomplete picture
+      //   medium — signals conflict (see cases below), or flag-only
+      //   low    — no ADV client data; fell back to name heuristic
+      const hasPooled        = clientTypes.includes('pooled_investment_vehicles');
+      const hasInstitutional = clientTypes.some(t => ['pension_plans', 'institutional'].includes(t));
+      const clientTypeDriven = clientTypes.length > 0 || hasPrivFund;
+      // isMixed:    pooled + institutional both present → ambiguous structure
+      // isConflict: institutional present BUT hasPrivateFundClients=true (Bluescape/Tremont)
+      // isFlagOnly: private-fund flag set, no client-type data — best guess, incomplete picture
       const isMixed    = hasPooled && hasInstitutional;
-      const isConflict = hasInstitutional && (firmSignal.advFlags?.hasPrivateFundClients ?? false);
-      const isFlagOnly = (firmSignal.advFlags?.hasPrivateFundClients ?? false) && !(firmSignal.clientTypes?.length ?? 0);
+      const isConflict = hasInstitutional && hasPrivFund;
+      const isFlagOnly = hasPrivFund && !clientTypes.length;
       const confidence = !clientTypeDriven ? 'low'
         : (isMixed || isConflict || isFlagOnly) ? 'medium'
         : 'high';
       signals.segment_inferred = {
-        value:      firmSignal.inferred_segment,
+        value:      segValue,
         basis:      clientTypeDriven ? 'adv_client_type' : 'adv_name_heuristic',
         source:     'sec_adv',
         as_of:      null,

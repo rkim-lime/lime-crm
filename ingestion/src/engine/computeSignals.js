@@ -113,6 +113,37 @@ export function inferSegment(firmName) {
 }
 
 /**
+ * Derive the institutional segment for an ADV firm from client-type evidence.
+ *
+ * Priority order (most-specific direct evidence first):
+ *  1. Quant name + pooled/private fund evidence → quant_fund
+ *  2. Pooled vehicles dominant (no institutional mix) → hedge_fund
+ *  3. Institutional clients present (pension, institutional) → asset_manager
+ *     Even if hasPrivateFundClients=true. Direct client-type beats the flag.
+ *  4. Retail only (HNW/individuals, no pooled) → wealth_manager
+ *  5. hasPrivateFundClients flag, no client types → hedge_fund (flag-only)
+ *  6. Name heuristic fallback (low confidence)
+ *
+ * This is the single source of truth used by both the ADV connector
+ * (normalizeFromFirm) and the normalizer (extractSignals), so that live
+ * ingest and backfill always produce identical results.
+ */
+export function deriveAdvSegment(firmName, clientTypes, hasPrivateFundClients) {
+  const ct = clientTypes ?? [];
+  const hasPooled        = ct.includes('pooled_investment_vehicles');
+  const hasInstitutional = ct.includes('pension_plans') || ct.includes('institutional');
+  const hasRetail        = ct.includes('high_net_worth') || ct.includes('individuals');
+  const isQuant          = /quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName ?? '');
+
+  if (isQuant && (hasPooled || hasPrivateFundClients)) return 'quant_fund';
+  if (hasPooled && !hasInstitutional)                  return 'hedge_fund';
+  if (hasInstitutional)                                return 'asset_manager';
+  if (hasRetail && !hasPooled)                         return 'wealth_manager';
+  if (hasPrivateFundClients)                           return 'hedge_fund';
+  return inferSegment(firmName); // name-only fallback → low confidence
+}
+
+/**
  * Check whether a prospect passes the ICP thresholds loaded from
  * icp_filter_config. Null numeric signals are treated as 0.
  * Returns true if icpConfig is null/undefined (no config = open ICP).

@@ -196,12 +196,55 @@ describe('extractSignals — ADV', () => {
   });
 });
 
+describe('extractSignals — ADV segment derived from clientTypes, not cached inferred_segment', () => {
+  it('ignores stale inferred_segment; recomputes from clientTypes (Clearbridge backfill regression)', () => {
+    // Backfill sets inferred_segment = inferSegment('Clearbridge Investments LLC') = 'other'.
+    // extractSignals must call deriveAdvSegment and produce 'asset_manager'.
+    const sigs = extractSignals(firmADV({
+      firmName:         'Clearbridge Investments LLC',
+      inferred_segment: 'other',  // stale name-heuristic output from backfill
+      clientTypes:      ['pooled_investment_vehicles', 'pension_plans', 'institutional', 'individuals'],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('asset_manager');
+    expect(sigs.segment_inferred.confidence).toBe('medium'); // isMixed
+  });
+
+  it('uses hasPrivateFundClients when clientTypes is empty (MK Capital backfill regression)', () => {
+    // Backfill sets inferred_segment = inferSegment('MK Capital Company') = 'asset_manager'
+    // (via the \\bcapital\\b name rule). extractSignals must use hasPrivateFundClients=true
+    // and return hedge_fund/medium (flag-only), not asset_manager.
+    const sigs = extractSignals(firmADV({
+      firmName:         'MK Capital Company',
+      inferred_segment: 'asset_manager', // stale name-heuristic output from backfill
+      clientTypes:      [],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('hedge_fund');
+    expect(sigs.segment_inferred.confidence).toBe('medium'); // flag-only
+  });
+
+  it('backfill and live ingest produce identical segments for same inputs', () => {
+    const base = {
+      firmName:    'Clearbridge Investments LLC',
+      clientTypes: ['pension_plans'],
+      advFlags:    { hasPrivateFundClients: true },
+    };
+    // Live ingest: inferred_segment already computed by normalizeFromFirm
+    const liveSigs = extractSignals(firmADV({ ...base, inferred_segment: 'asset_manager' }));
+    // Backfill: inferred_segment set to inferSegment(firmName) = 'other' (name heuristic)
+    const backfillSigs = extractSignals(firmADV({ ...base, inferred_segment: 'other' }));
+    expect(liveSigs.segment_inferred.value).toBe(backfillSigs.segment_inferred.value);
+    expect(liveSigs.segment_inferred.confidence).toBe(backfillSigs.segment_inferred.confidence);
+  });
+});
+
 describe('extractSignals — ADV segment confidence', () => {
   it('pension_plans + hasPrivateFundClients=true → asset_manager/medium (Bluescape/Tremont pattern)', () => {
     const sigs = extractSignals(firmADV({
-      inferred_segment: 'asset_manager',
-      clientTypes:      ['pension_plans'],
-      advFlags:         { hasPrivateFundClients: true },
+      firmName:    'Bluescape Energy Partners LLC', // non-quant name
+      clientTypes: ['pension_plans'],
+      advFlags:    { hasPrivateFundClients: true },
     }));
     expect(sigs.segment_inferred.value).toBe('asset_manager');
     expect(sigs.segment_inferred.confidence).toBe('medium');
@@ -210,19 +253,20 @@ describe('extractSignals — ADV segment confidence', () => {
 
   it('pooled vehicles only + hasPrivateFundClients=true → hedge_fund/high', () => {
     const sigs = extractSignals(firmADV({
-      inferred_segment: 'hedge_fund',
-      clientTypes:      ['pooled_investment_vehicles'],
-      advFlags:         { hasPrivateFundClients: true },
+      firmName:    'Apex Partners LP', // non-quant name
+      clientTypes: ['pooled_investment_vehicles'],
+      advFlags:    { hasPrivateFundClients: true },
     }));
     expect(sigs.segment_inferred.value).toBe('hedge_fund');
     expect(sigs.segment_inferred.confidence).toBe('high');
   });
 
   it('high_net_worth only, no private fund → wealth_manager/high', () => {
+    // firmName='Quant Strategies LLC' is fine here — isQuant=true but no pooled/private
+    // evidence, so the quant rule doesn't fire and retail wins.
     const sigs = extractSignals(firmADV({
-      inferred_segment: 'wealth_manager',
-      clientTypes:      ['high_net_worth'],
-      advFlags:         { hasPrivateFundClients: false },
+      clientTypes: ['high_net_worth'],
+      advFlags:    { hasPrivateFundClients: false },
     }));
     expect(sigs.segment_inferred.value).toBe('wealth_manager');
     expect(sigs.segment_inferred.confidence).toBe('high');
@@ -230,9 +274,9 @@ describe('extractSignals — ADV segment confidence', () => {
 
   it('pooled + institutional mixed → asset_manager/medium (Clearbridge pattern)', () => {
     const sigs = extractSignals(firmADV({
-      inferred_segment: 'asset_manager',
-      clientTypes:      ['pooled_investment_vehicles', 'pension_plans', 'institutional'],
-      advFlags:         { hasPrivateFundClients: true },
+      firmName:    'Clearbridge Investments LLC', // non-quant name
+      clientTypes: ['pooled_investment_vehicles', 'pension_plans', 'institutional'],
+      advFlags:    { hasPrivateFundClients: true },
     }));
     expect(sigs.segment_inferred.value).toBe('asset_manager');
     expect(sigs.segment_inferred.confidence).toBe('medium');
@@ -240,9 +284,9 @@ describe('extractSignals — ADV segment confidence', () => {
 
   it('hasPrivateFundClients=true, no client types → hedge_fund/medium (flag-only)', () => {
     const sigs = extractSignals(firmADV({
-      inferred_segment: 'hedge_fund',
-      clientTypes:      [],
-      advFlags:         { hasPrivateFundClients: true },
+      firmName:    'MK Capital Company', // non-quant name; 'capital' only triggers name fallback
+      clientTypes: [],
+      advFlags:    { hasPrivateFundClients: true },
     }));
     expect(sigs.segment_inferred.value).toBe('hedge_fund');
     expect(sigs.segment_inferred.confidence).toBe('medium');
