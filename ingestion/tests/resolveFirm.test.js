@@ -10,11 +10,12 @@
  *   3. CIK  → prospects (prospect_merge)
  *   4. CRD  → prospects (prospect_merge)
  *   5. fuzzy RPC → fuzzy_account | fuzzy_prospect
+ *      Fix A: rejected when candidate has a different non-null CRD or CIK
  *   7. no match → new
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveFirm }          from '../src/engine/resolveFirm.js';
+import { resolveFirm, normalizeName, setStopwords } from '../src/engine/resolveFirm.js';
 
 // ── Fake Supabase builder ─────────────────────────────────────────────────────
 
@@ -33,8 +34,8 @@ function makeSb({
 } = {}) {
   const builder = (result) => {
     const b = {
-      select:     () => b,
-      eq:         () => b,
+      select:      () => b,
+      eq:          () => b,
       maybeSingle: () => Promise.resolve(result),
     };
     return b;
@@ -47,7 +48,7 @@ function makeSb({
 
 const NO_MATCH = { data: null, error: null };
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// ── Existing resolution-order tests ──────────────────────────────────────────
 
 describe('resolveFirm', () => {
   it('CIK exact match → account_match', async () => {
@@ -85,7 +86,8 @@ describe('resolveFirm', () => {
       acctResult:  NO_MATCH,
       prospResult: NO_MATCH,
       rpcResult: {
-        data: [{ id: 'acc-3', name: 'Test Capital LLC', similarity: 0.87, match_type: 'account' }],
+        data: [{ id: 'acc-3', name: 'Test Capital LLC', similarity: 0.87,
+                 match_type: 'account', crd_number: null, cik: null }],
         error: null,
       },
     });
@@ -100,7 +102,8 @@ describe('resolveFirm', () => {
       acctResult:  NO_MATCH,
       prospResult: NO_MATCH,
       rpcResult: {
-        data: [{ id: 'prosp-3', name: 'Test Partners LP', similarity: 0.75, match_type: 'prospect' }],
+        data: [{ id: 'prosp-3', name: 'Test Partners LP', similarity: 0.75,
+                 match_type: 'prospect', crd_number: null, cik: null }],
         error: null,
       },
     });
@@ -153,5 +156,180 @@ describe('resolveFirm', () => {
     const res = await resolveFirm(sb, { cik: 'C100', firmName: 'Exact Match Fund' });
     expect(res.resolution).toBe('prospect_merge');
     expect(rpcSpy.called).toBe(false); // fuzzy RPC never called
+  });
+});
+
+// ── Fix A: identifier-mismatch guard ─────────────────────────────────────────
+
+describe('resolveFirm — Fix A: identifier mismatch blocks fuzzy (different firms)', () => {
+  it('CRD mismatch → not matched (Lloyd/MH advisory false-positive pattern)', async () => {
+    // Both firms have CRDs that differ → definitively different firms.
+    // Similarity 0.67 on "advisory services" overlap must NOT win.
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [{ id: 'prosp-mh', name: 'MH Advisory Services', similarity: 0.67,
+                 match_type: 'prospect', crd_number: '999888', cik: null }],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { crdNumber: '111222', firmName: 'Lloyd Advisory Services' });
+    expect(res).toEqual({ resolution: 'new' });
+  });
+
+  it('CIK mismatch → not matched (PGIM/ESR singapore false-positive pattern)', async () => {
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [{ id: 'prosp-esr', name: 'ESR Singapore', similarity: 0.64,
+                 match_type: 'prospect', crd_number: null, cik: 'CIK_9999' }],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { cik: 'CIK_1111', firmName: 'PGIM Singapore' });
+    expect(res).toEqual({ resolution: 'new' });
+  });
+
+  it('same CRD → accepted (same firm, variant name)', async () => {
+    // CRD matches → this IS the same firm; fuzzy should be accepted
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [{ id: 'prosp-apex', name: 'Apex Hedge Fund LP', similarity: 0.91,
+                 match_type: 'prospect', crd_number: '111222', cik: null }],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { crdNumber: '111222', firmName: 'Apex Hedge Fund' });
+    expect(res.resolution).toBe('fuzzy_prospect');
+    expect(res.matchId).toBe('prosp-apex');
+  });
+
+  it('candidate has null CRD → fuzzy accepted (genuine ambiguity)', async () => {
+    // Incoming has a CRD but the matched record lacks one (e.g. 13F-only prospect
+    // that hasn't been linked to an ADV filing yet). Name similarity stands.
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [{ id: 'prosp-ambig', name: 'Apex Hedge Capital', similarity: 0.85,
+                 match_type: 'prospect', crd_number: null, cik: null }],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { crdNumber: '111222', firmName: 'Apex Hedge' });
+    expect(res.resolution).toBe('fuzzy_prospect');
+  });
+
+  it('incoming has no CRD → fuzzy accepted regardless of candidate CRD', async () => {
+    // 13F-sourced firm (CIK only, no CRD) — fuzzy match against ADV prospect
+    // that has a CRD. No mismatch to detect; name similarity decides.
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [{ id: 'prosp-adv', name: 'Clearbridge Investments LLC', similarity: 0.82,
+                 match_type: 'prospect', crd_number: '555111', cik: null }],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { cik: 'CIK_123', firmName: 'Clearbridge' });
+    expect(res.resolution).toBe('fuzzy_prospect');
+  });
+
+  it('first candidate rejected (CRD mismatch), second candidate accepted', async () => {
+    // Top match has a conflicting CRD → skip. Next candidate has no CRD → accept.
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [
+          { id: 'prosp-bad', name: 'Bad Match Fund', similarity: 0.9,
+            match_type: 'prospect', crd_number: '000001', cik: null },
+          { id: 'prosp-ok',  name: 'Good Match Fund', similarity: 0.8,
+            match_type: 'prospect', crd_number: null, cik: null },
+        ],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { crdNumber: '999999', firmName: 'Good Match Fund' });
+    expect(res.resolution).toBe('fuzzy_prospect');
+    expect(res.matchId).toBe('prosp-ok');
+  });
+
+  it('all candidates rejected (all CRD mismatches) → new', async () => {
+    const sb = makeSb({
+      acctResult:  NO_MATCH,
+      prospResult: NO_MATCH,
+      rpcResult: {
+        data: [
+          { id: 'p1', name: 'A Fund', similarity: 0.9, match_type: 'prospect',
+            crd_number: '111', cik: null },
+          { id: 'p2', name: 'B Fund', similarity: 0.8, match_type: 'prospect',
+            crd_number: '222', cik: null },
+        ],
+        error: null,
+      },
+    });
+    const res = await resolveFirm(sb, { crdNumber: '999', firmName: 'A Fund' });
+    expect(res).toEqual({ resolution: 'new' });
+  });
+});
+
+// ── Fix B+C: normalizeName stopword expansion ─────────────────────────────────
+//
+// These tests verify that both the industry-descriptor expansion (Fix B) and
+// the two-pass punctuation-then-stopwords logic (Fix C) produce the correct
+// output. The SQL normalize_firm_name() applies the same logic against the same
+// word list seeded by migration 019 — if these JS tests pass AND the migration
+// seed matches SEED_STOPWORDS, SQL/JS parity is guaranteed by construction.
+
+describe('normalizeName — stopword expansion and two-pass logic', () => {
+  it.each([
+    // Fix B: 'advisory' was missing from prior regex (matched advisors/advisers, not advisory)
+    ['Lloyd Advisory Services',             'lloyd'],
+    ['MH Advisory Services',               'mh'],
+    // Fix B: financial + planning
+    ['AISA FINANCIAL PLANNING',            'aisa'],
+    ['INVESTMENTS & FINANCIAL PLANNING',   ''],       // all tokens stripped
+    ['LARSON FINANCIAL GROUP',             'larson'],
+    ['FINANCIAL MANAGEMENT ADVISORS',      ''],
+    // Fix B: geographic
+    ['PGIM (SINGAPORE)',                   'pgim'],   // parens removed by punct pass
+    ['ESR SINGAPORE',                      'esr'],
+    // Fix B: retirement + plan (word-boundary: 'plan' does NOT match 'planology')
+    ['RETIREMENT PLANOLOGY',               'planology'],
+    ['ARGENT RETIREMENT PLAN ADVISORS',    'argent'],
+    // Fix B: wealth
+    ['COASTAL PRIVATE WEALTH MANAGEMENT',  'coastal private'],
+    ['PRIVATE WEALTH MANAGEMENT',          'private'],
+    // Structural: existing words still stripped
+    ['Bluescape Energy Partners LLC',      'bluescape energy'],
+    // Two-pass: L.L.C. → punct removal → 'llc' → stopword strip
+    ['Apex Capital L.L.C.',               'apex'],
+    // Baseline: no stopwords present → name preserved
+    ['Clearbridge',                        'clearbridge'],
+    // Mixed: quant-style name with no stopwords
+    ['Quant Strategies',                   'quant strategies'],
+  ])('normalizeName(%s) → "%s"', (input, expected) => {
+    expect(normalizeName(input)).toBe(expected);
+  });
+});
+
+describe('normalizeName — setStopwords override (Fix C config path)', () => {
+  it('custom stopwords replace the active set', () => {
+    setStopwords(['foo', 'bar']);
+    expect(normalizeName('Foo Capital Bar')).toBe('capital'); // 'foo' and 'bar' stripped
+    // Restore default so subsequent tests are unaffected
+    setStopwords([
+      'llc', 'lp', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
+      'capital', 'management', 'advisors', 'advisers', 'partners', 'group',
+      'holdings', 'asset', 'investments', 'investment', 'fund', 'funds', 'company', 'co',
+      'advisory', 'financial', 'planning', 'wealth', 'services', 'retirement', 'plan',
+      'singapore',
+    ]);
   });
 });
