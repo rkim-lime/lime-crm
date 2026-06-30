@@ -128,7 +128,15 @@ $$ LANGUAGE plpgsql STABLE;
 --     on-the-fly normalization of the small accounts table.
 --   • Prospects query uses pre-stored p.normalized_name (maintained by
 --     runConnector.js upserts and the backfill in step 7 below).
-CREATE OR REPLACE FUNCTION public.find_similar_firms(
+--
+-- Postgres refuses CREATE OR REPLACE when the RETURNS TABLE column list changes.
+-- The original function (migration 014) returned (match_type, id, name, similarity).
+-- The new version adds crd_number and cik → must DROP first.
+-- No views, triggers, or other functions reference find_similar_firms;
+-- it is called only from resolveFirm.js as an RPC. No CASCADE needed.
+DROP FUNCTION IF EXISTS public.find_similar_firms(text, numeric);
+
+CREATE FUNCTION public.find_similar_firms(
   search_name text,
   threshold   numeric DEFAULT 0.5
 )
@@ -183,6 +191,13 @@ RETURNS TABLE(
   ORDER BY similarity DESC
   LIMIT 5;
 $$ LANGUAGE sql STABLE;
+
+-- Re-grant execute after DROP+CREATE (DROP removes any previously inherited grants).
+-- The ingestion pipeline uses the service_role key (bypasses grants), but re-granting
+-- here keeps the RPC callable from client-side authenticated sessions and matches
+-- Supabase's default behaviour for public-schema functions.
+GRANT EXECUTE ON FUNCTION public.find_similar_firms(text, numeric) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.find_similar_firms(text, numeric) TO anon;
 
 -- ── 6. name_similarity helper (used by recheck-dedup-queue.js) ──
 CREATE OR REPLACE FUNCTION public.name_similarity(name_a text, name_b text)
