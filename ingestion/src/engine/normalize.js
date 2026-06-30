@@ -226,6 +226,11 @@ export function deriveAumCanonical(normalizedSignals) {
  * Map the best available segment_inferred signal to a canonical taxonomy value_key.
  * segmentMappings: rows from taxonomy_mappings for the 'segment' taxonomy.
  * Returns { value, confidence } — both nullable.
+ *
+ * Taxonomy mappings translate raw connector values → canonical vocabulary keys.
+ * They must NOT override confidence: confidence reflects the conflict-aware
+ * quality of the Layer-2 tuple (e.g. medium for institutional+privateFund),
+ * which the mapping row's hardcoded value knows nothing about.
  */
 export function deriveSegmentCanonical(normalizedSignals, segmentMappings) {
   const seg = normalizedSignals.segment_inferred;
@@ -237,7 +242,8 @@ export function deriveSegmentCanonical(normalizedSignals, segmentMappings) {
   );
 
   if (mapping) {
-    return { value: mapping.canonical_value_key, confidence: mapping.confidence };
+    // mapping.canonical_value_key translates the value; tuple confidence is authoritative.
+    return { value: mapping.canonical_value_key, confidence: seg.confidence };
   }
 
   // No mapping found — use the raw value as-is (may already be canonical, e.g. 'hedge_fund')

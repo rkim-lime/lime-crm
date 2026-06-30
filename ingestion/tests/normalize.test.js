@@ -378,6 +378,17 @@ describe('deriveSegmentCanonical', () => {
     expect(result.confidence).toBe('high');
   });
 
+  it('hedge_fund tuple with confidence=medium → canonical confidence=medium, not high (Bluescape regression)', () => {
+    // taxonomy_mappings has hedge_fund/ingest_adv with hardcoded confidence='high'.
+    // The tuple confidence (medium, from conflict-aware logic) must take precedence.
+    const norm = {
+      segment_inferred: { value: 'hedge_fund', source: 'sec_adv', confidence: 'medium' },
+    };
+    const result = deriveSegmentCanonical(norm, SEGMENT_MAPPINGS);
+    expect(result.value).toBe('hedge_fund');
+    expect(result.confidence).toBe('medium');
+  });
+
   it('falls back to raw value when no mapping exists', () => {
     const norm = {
       segment_inferred: { value: 'unknown_type', source: 'sec_13f', confidence: 'low' },
