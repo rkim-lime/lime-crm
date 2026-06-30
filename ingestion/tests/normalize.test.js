@@ -289,6 +289,21 @@ describe('mergeSignal', () => {
     const undated = { value: 2, confidence: 'low', as_of: null,         source: 'sec_13f', basis: 'a' };
     expect(mergeSignal(dated, undated)).toBe(dated);
   });
+
+  it('same source, stale high-confidence cached value does not block lower-confidence correction (Bluescape regression)', () => {
+    // Old ADV logic stored hedge_fund/high. New logic correctly emits asset_manager/medium.
+    // Without same-source rule, high > medium → stale value would survive re-ingest.
+    const stale   = { value: 'hedge_fund',   confidence: 'high',   source: 'sec_adv', as_of: null, basis: 'adv_client_type' };
+    const corrected = { value: 'asset_manager', confidence: 'medium', source: 'sec_adv', as_of: null, basis: 'adv_client_type' };
+    expect(mergeSignal(stale, corrected)).toBe(corrected);
+  });
+
+  it('cross-source: higher confidence still wins (ADV high over 13F low)', () => {
+    const low13f  = { value: 'other',      confidence: 'low',  source: 'sec_13f', as_of: '2024-03-31', basis: 'name' };
+    const highAdv = { value: 'hedge_fund', confidence: 'high', source: 'sec_adv', as_of: null,         basis: 'adv_client_type' };
+    expect(mergeSignal(low13f, highAdv)).toBe(highAdv);
+    expect(mergeSignal(highAdv, low13f)).toBe(highAdv);
+  });
 });
 
 

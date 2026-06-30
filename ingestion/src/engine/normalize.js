@@ -161,11 +161,30 @@ export function extractSignals(firmSignal) {
 
 /**
  * Merge two signal entries for the same signal_key.
- * Higher confidence wins; ties broken by more recent as_of.
+ *
+ * Same-source rule: when both signals come from the same connector, skip the
+ * confidence comparison and apply only the as_of recency rule. Re-running a
+ * connector is a re-computation, not a cross-source competition — a stale
+ * confidence level written by old logic must not block corrections from the
+ * same source on the next ingest (the Bluescape/Tremont pattern: old logic
+ * stored hedge_fund/high; new logic correctly emits asset_manager/medium, but
+ * high > medium would have kept the wrong value without this rule).
+ *
+ * Cross-source rule: higher confidence wins; recency (as_of) breaks ties.
  */
 export function mergeSignal(existing, incoming) {
   if (!existing) return incoming;
   if (!incoming) return existing;
+
+  // Same-source re-ingest: skip confidence comparison, use only recency.
+  if (existing.source && incoming.source && existing.source === incoming.source) {
+    if (existing.as_of && incoming.as_of) {
+      return incoming.as_of >= existing.as_of ? incoming : existing;
+    }
+    if (incoming.as_of) return incoming;
+    if (existing.as_of) return existing;
+    return incoming; // both null → fresh computation wins
+  }
 
   const er = CONFIDENCE_RANK[existing.confidence] ?? 0;
   const ir = CONFIDENCE_RANK[incoming.confidence] ?? 0;
