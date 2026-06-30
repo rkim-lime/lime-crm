@@ -109,18 +109,30 @@ export function extractSignals(firmSignal) {
     }
 
     if (firmSignal.inferred_segment) {
-      // Confidence depends on whether client-type data drove the segment.
-      // If the firm has private-fund clients or any ADV client types, the ADV
-      // connector overrode the name heuristic → high confidence.
-      const clientTypeDriven =
-        firmSignal.advFlags?.hasPrivateFundClients ||
-        (firmSignal.clientTypes?.length ?? 0) > 0;
+      // Three-tier confidence for ADV segment:
+      //   high   — clean, unconflicted client-type signal
+      //   medium — signals conflict with each other (see cases below), or flag-only
+      //   low    — no ADV client data at all; fell back to name heuristic
+      const hasPooled        = firmSignal.clientTypes?.includes('pooled_investment_vehicles') ?? false;
+      const hasInstitutional = firmSignal.clientTypes?.some(t => ['pension_plans', 'institutional'].includes(t)) ?? false;
+      const clientTypeDriven = (firmSignal.clientTypes?.length ?? 0) > 0 || (firmSignal.advFlags?.hasPrivateFundClients ?? false);
+      // isMixed:    pooled vehicles AND institutional clients both present → ambiguous structure
+      // isConflict: institutional clients present BUT hasPrivateFundClients=true
+      //             (Bluescape/Tremont pattern — pension clients + private-fund flag conflict;
+      //              institutional client type wins for segment, but confidence is medium)
+      // isFlagOnly: private-fund flag set, no client-type data — best guess with incomplete picture
+      const isMixed    = hasPooled && hasInstitutional;
+      const isConflict = hasInstitutional && (firmSignal.advFlags?.hasPrivateFundClients ?? false);
+      const isFlagOnly = (firmSignal.advFlags?.hasPrivateFundClients ?? false) && !(firmSignal.clientTypes?.length ?? 0);
+      const confidence = !clientTypeDriven ? 'low'
+        : (isMixed || isConflict || isFlagOnly) ? 'medium'
+        : 'high';
       signals.segment_inferred = {
         value:      firmSignal.inferred_segment,
         basis:      clientTypeDriven ? 'adv_client_type' : 'adv_name_heuristic',
         source:     'sec_adv',
         as_of:      null,
-        confidence: clientTypeDriven ? 'high' : 'low',
+        confidence,
       };
     }
 

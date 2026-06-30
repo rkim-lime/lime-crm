@@ -47,6 +47,30 @@ const CLEARBRIDGE_XML = `<Firm>
   </FormInfo>
 </Firm>`;
 
+// Bluescape pattern — pension clients + hasPrivateFundClients=true → asset_manager
+const BLUESCAPE_XML = `<Firm>
+  <Info FirmCrdNb="123001" LegalNm="BLUESCAPE ENERGY PARTNERS LLC"/>
+  <FormInfo>
+    <Part1A>
+      <Item5F Q5F1="Y" Q5F2C="500000000"/>
+      <Item5D Q5DF1="8"/>
+      <Item7A Q7A1="Y"/>
+    </Part1A>
+  </FormInfo>
+</Firm>`;
+
+// Pure pooled vehicles + hasPrivateFundClients=true → hedge_fund
+const PURE_HEDGE_XML = `<Firm>
+  <Info FirmCrdNb="123002" LegalNm="APEX HEDGE FUND LP"/>
+  <FormInfo>
+    <Part1A>
+      <Item5F Q5F1="Y" Q5F2C="2000000000"/>
+      <Item5D Q5DM1="25"/>
+      <Item7A Q7A1="Y"/>
+    </Part1A>
+  </FormInfo>
+</Firm>`;
+
 // Firm with only BusNm (no LegalNm) — fallback name test
 const BUS_NM_ONLY_XML = `<Firm>
   <Info FirmCrdNb="999001" BusNm="ACME ADVISORS LLC"/>
@@ -180,6 +204,40 @@ describe('parseFirmBlock', () => {
       const signal = parseFirmBlock(RABENOLD_XML);
       expect(signal.equities_pct).toBe(0);
       expect(signal.options_present).toBe(false);
+    });
+  });
+
+  describe('segment derivation from client types', () => {
+    it('pension-primary + hasPrivateFundClients=true → asset_manager (Bluescape pattern)', () => {
+      const signal = parseFirmBlock(BLUESCAPE_XML);
+      expect(signal.clientTypes).toContain('pension_plans');
+      expect(signal.advFlags.hasPrivateFundClients).toBe(true);
+      expect(signal.inferred_segment).toBe('asset_manager');
+    });
+
+    it('pooled vehicles dominant + hasPrivateFundClients=true → hedge_fund', () => {
+      const signal = parseFirmBlock(PURE_HEDGE_XML);
+      expect(signal.clientTypes).toContain('pooled_investment_vehicles');
+      expect(signal.advFlags.hasPrivateFundClients).toBe(true);
+      expect(signal.inferred_segment).toBe('hedge_fund');
+    });
+
+    it('Clearbridge: pooled + institutional mix → asset_manager (institutional wins)', () => {
+      const signal = parseFirmBlock(CLEARBRIDGE_XML);
+      expect(signal.inferred_segment).toBe('asset_manager');
+    });
+
+    it('MK Capital: hasPrivateFundClients=true, no client types → hedge_fund (flag-only)', () => {
+      const signal = parseFirmBlock(MK_CAPITAL_XML);
+      expect(signal.clientTypes).toEqual([]);
+      expect(signal.advFlags.hasPrivateFundClients).toBe(true);
+      expect(signal.inferred_segment).toBe('hedge_fund');
+    });
+
+    it('Rabenold: HNW + individuals, no private fund → wealth_manager', () => {
+      const signal = parseFirmBlock(RABENOLD_XML);
+      expect(signal.advFlags.hasPrivateFundClients).toBe(false);
+      expect(signal.inferred_segment).toBe('wealth_manager');
     });
   });
 });

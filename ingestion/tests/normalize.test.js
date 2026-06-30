@@ -196,6 +196,59 @@ describe('extractSignals — ADV', () => {
   });
 });
 
+describe('extractSignals — ADV segment confidence', () => {
+  it('pension_plans + hasPrivateFundClients=true → asset_manager/medium (Bluescape/Tremont pattern)', () => {
+    const sigs = extractSignals(firmADV({
+      inferred_segment: 'asset_manager',
+      clientTypes:      ['pension_plans'],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('asset_manager');
+    expect(sigs.segment_inferred.confidence).toBe('medium');
+    expect(sigs.segment_inferred.basis).toBe('adv_client_type');
+  });
+
+  it('pooled vehicles only + hasPrivateFundClients=true → hedge_fund/high', () => {
+    const sigs = extractSignals(firmADV({
+      inferred_segment: 'hedge_fund',
+      clientTypes:      ['pooled_investment_vehicles'],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('hedge_fund');
+    expect(sigs.segment_inferred.confidence).toBe('high');
+  });
+
+  it('high_net_worth only, no private fund → wealth_manager/high', () => {
+    const sigs = extractSignals(firmADV({
+      inferred_segment: 'wealth_manager',
+      clientTypes:      ['high_net_worth'],
+      advFlags:         { hasPrivateFundClients: false },
+    }));
+    expect(sigs.segment_inferred.value).toBe('wealth_manager');
+    expect(sigs.segment_inferred.confidence).toBe('high');
+  });
+
+  it('pooled + institutional mixed → asset_manager/medium (Clearbridge pattern)', () => {
+    const sigs = extractSignals(firmADV({
+      inferred_segment: 'asset_manager',
+      clientTypes:      ['pooled_investment_vehicles', 'pension_plans', 'institutional'],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('asset_manager');
+    expect(sigs.segment_inferred.confidence).toBe('medium');
+  });
+
+  it('hasPrivateFundClients=true, no client types → hedge_fund/medium (flag-only)', () => {
+    const sigs = extractSignals(firmADV({
+      inferred_segment: 'hedge_fund',
+      clientTypes:      [],
+      advFlags:         { hasPrivateFundClients: true },
+    }));
+    expect(sigs.segment_inferred.value).toBe('hedge_fund');
+    expect(sigs.segment_inferred.confidence).toBe('medium');
+  });
+});
+
 
 // ── mergeSignal ───────────────────────────────────────────────────────────────
 

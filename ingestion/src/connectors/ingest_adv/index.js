@@ -114,23 +114,52 @@ export function normalizeFromFirm(firm) {
   const item7A = getPath(firm, 'FormInfo.Part1A.Item7A');
   const hasPrivateFundClients = item7A != null && item7A !== '' && typeof item7A === 'object';
 
-  // ── Inferred segment ──────────────────────────────────────────────────────
+  // ── Inferred segment from client-type evidence (ADV Item 5.D and 7.A) ──────
+  //
+  // Priority order: most-specific direct evidence first. Think of these as
+  // Bayesian priors overridden by direct observation from the filing:
+  //
+  //  1. Quant name + pooled/private evidence → quant_fund
+  //     Name alone isn't enough (inferSegment handles that); we need structural
+  //     evidence (pooled clients or a private fund) to confirm it's a quant shop.
+  //
+  //  2. Pooled vehicles dominant (no institutional mix) → hedge_fund
+  //     Firms whose clients ARE primarily pooled investment vehicles are
+  //     structurally hedge-fund-like. High confidence because the client type
+  //     is direct evidence of the firm's function.
+  //
+  //  3. Institutional clients present (pension_plans, institutional) → asset_manager
+  //     EVEN IF hasPrivateFundClients=true. A firm managing pension money that
+  //     also happens to advise one private fund is an asset manager, not a hedge
+  //     fund. Direct client-type evidence overrides the structural flag.
+  //     (Confidence is 'medium' in normalize.js when the private-fund flag
+  //     conflicts with this — see isConflict logic there.)
+  //
+  //  4. Retail only (HNW / individuals, no pooled exposure) → wealth_manager
+  //
+  //  5. hasPrivateFundClients flag, no client-type data → hedge_fund
+  //     Best guess when we know the firm has a private fund but can't see the
+  //     client mix. Confidence is 'medium' (isFlagOnly in normalize.js).
+  //
+  //  6. Fallback: inferSegment(firmName) name heuristic (low confidence).
+  //     Confidence is computed in extractSignals (normalize.js), not here.
   let inferred_segment = inferSegment(firmName);
-  if (hasPrivateFundClients || clientTypes.includes('pooled_investment_vehicles')) {
-    inferred_segment = /quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName)
-      ? 'quant_fund'
-      : 'hedge_fund';
-  } else if (
-    clientTypes.includes('pension_plans') &&
-    !clientTypes.includes('high_net_worth') &&
-    !clientTypes.includes('pooled_investment_vehicles')
-  ) {
-    inferred_segment = 'pension';
-  } else if (
-    clientTypes.length > 0 &&
-    clientTypes.every(t => ['individuals', 'high_net_worth'].includes(t))
-  ) {
-    inferred_segment = 'broker_dealer';
+
+  const hasPooled        = clientTypes.includes('pooled_investment_vehicles');
+  const hasInstitutional = clientTypes.includes('pension_plans') || clientTypes.includes('institutional');
+  const hasRetail        = clientTypes.includes('high_net_worth') || clientTypes.includes('individuals');
+  const isQuant          = /quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName);
+
+  if (isQuant && (hasPooled || hasPrivateFundClients)) {
+    inferred_segment = 'quant_fund';
+  } else if (hasPooled && !hasInstitutional) {
+    inferred_segment = 'hedge_fund';
+  } else if (hasInstitutional) {
+    inferred_segment = 'asset_manager';
+  } else if (hasRetail && !hasPooled) {
+    inferred_segment = 'wealth_manager';
+  } else if (hasPrivateFundClients) {
+    inferred_segment = 'hedge_fund';
   }
 
   return {
