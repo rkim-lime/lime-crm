@@ -6,8 +6,11 @@ function required(key) {
   return val;
 }
 
+// Lazy getters: required() is called only when the property is first READ,
+// not at module-import time. Importing config.js must not demand live
+// credentials — unit tests import connector code without injecting secrets.
 export const config = {
-  supabaseUrl:        required('SUPABASE_URL'),
-  supabaseServiceKey: required('SUPABASE_SERVICE_KEY'),
-  secUserAgent:       required('SEC_USER_AGENT'),
+  get supabaseUrl()        { return required('SUPABASE_URL'); },
+  get supabaseServiceKey() { return required('SUPABASE_SERVICE_KEY'); },
+  get secUserAgent()       { return required('SEC_USER_AGENT'); },
 };
