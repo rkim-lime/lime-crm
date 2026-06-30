@@ -33,46 +33,88 @@
 //   2. Strip whole-word stopwords          — removes structural + industry boilerplate
 //   3. Collapse whitespace
 
-const SEED_STOPWORDS = [
-  // structural: legal entity types and high-frequency finance terms
-  'llc', 'lp', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
-  'capital', 'management', 'advisors', 'advisers', 'partners', 'group',
-  'holdings', 'asset', 'investments', 'investment', 'fund', 'funds', 'company', 'co',
-  // industry: generic descriptors shared across too many distinct advisory firms
-  // NOTE: 'advisory' was missing from the prior regex despite 'advisors'/'advisers' being present
-  'advisory', 'financial', 'planning', 'wealth', 'services', 'retirement', 'plan',
-  // geographic: boilerplate location tokens (extend via name_stopwords table — no code change)
-  'singapore',
-];
+// SEED_STOPWORDS mirrors the name_stopwords table (migration 020 seed).
+// 'anywhere'      — stripped wherever the word appears in the name
+// 'trailing_only' — stripped only when it is the LAST token (entity-type suffixes)
+//
+// This prevents ambiguous tokens ('sa', 'as', 'ab', 'ag') from being erased
+// when they appear as leading initials. E.g.:
+//   "SAMSUNG ASSET MANAGEMENT SA"  → 'samsung'  (trailing 'sa' stripped)
+//   "AB GLOBAL PARTNERS LLC"       → 'ab global' (leading 'ab' preserved)
+const SEED_STOPWORDS = {
+  anywhere: [
+    // finance / industry descriptors — can appear leading, mid, or trailing
+    'capital', 'management', 'advisors', 'advisers', 'advisory', 'partners', 'group',
+    'holdings', 'asset', 'investments', 'investment', 'fund', 'funds',
+    'financial', 'planning', 'wealth', 'services', 'retirement', 'plan',
+    // geographic boilerplate
+    'singapore',
+  ],
+  trailing: [
+    // English legal entity types
+    'llc', 'lp', 'llp', 'inc', 'incorporated', 'corp', 'corporation',
+    'ltd', 'limited', 'plc', 'ulc', 'company', 'co',
+    // International suffixes (all trailing — some are ambiguous as leading initials)
+    'pte', 'pty',                         // Oceania / SE Asia
+    'gmbh', 'ag',                         // German-speaking
+    'sa', 'sas', 'sarl',                  // French
+    'srl', 'spa',                         // Italian / Romanian
+    'bv', 'nv',                           // Dutch / Belgian
+    'ab',                                 // Swedish
+    'as', 'aps',                          // Nordic
+    'oy',                                 // Finnish
+    'kk',                                 // Japanese
+  ],
+};
 
 const PUNCT_RE = /[^a-z0-9 ]/g;
+const NEVER_MATCH = /(?!)/; // sentinel regex that never matches
 
-function buildStopwordsRegex(words) {
-  // Sort longest-first so 'incorporated' is tried before 'inc', etc.
+function buildAnywhereRegex(words) {
+  if (!words.length) return NEVER_MATCH;
   const sorted = [...words].sort((a, b) => b.length - a.length);
   return new RegExp(`\\b(${sorted.join('|')})\\b`, 'gi');
 }
 
-let _stopwordsRegex  = buildStopwordsRegex(SEED_STOPWORDS);
+function buildTrailingRegex(words) {
+  if (!words.length) return NEVER_MATCH;
+  // No 'g' flag — applied in a loop, removes one trailing word per pass
+  const sorted = [...words].sort((a, b) => b.length - a.length);
+  return new RegExp(`\\b(${sorted.join('|')})\\b\\s*$`, 'i');
+}
+
+let _anywhereRegex  = buildAnywhereRegex(SEED_STOPWORDS.anywhere);
+let _trailingRegex  = buildTrailingRegex(SEED_STOPWORDS.trailing);
 let _stopwordsLoaded = false;
 
-/** Override the active stopword list. Exported for use in tests. */
-export function setStopwords(words) {
-  _stopwordsRegex = buildStopwordsRegex(words);
+/**
+ * Override the active stopword lists.
+ * Accepts { anywhere: string[], trailing: string[] }.
+ * Exported for use in tests and by ensureStopwords().
+ */
+export function setStopwords({ anywhere = [], trailing = [] } = {}) {
+  _anywhereRegex = buildAnywhereRegex(anywhere);
+  _trailingRegex = buildTrailingRegex(trailing);
 }
 
 /**
  * Load stopwords from the name_stopwords table (idempotent — runs once per
  * process). Falls back silently to SEED_STOPWORDS if the table doesn't exist
- * yet (pre-migration 019) or the query returns no rows.
+ * yet (pre-migration 020) or the query returns no rows.
  */
 async function ensureStopwords(supabase) {
   if (_stopwordsLoaded) return;
   _stopwordsLoaded = true; // set before await — prevents concurrent re-entry
   try {
-    const result = await supabase.from('name_stopwords').select('word').eq('enabled', true);
+    const result = await supabase
+      .from('name_stopwords')
+      .select('word, position')
+      .eq('enabled', true);
     if (result && !result.error && Array.isArray(result.data) && result.data.length > 0) {
-      setStopwords(result.data.map(r => r.word));
+      setStopwords({
+        anywhere: result.data.filter(r => r.position === 'anywhere').map(r => r.word),
+        trailing: result.data.filter(r => r.position === 'trailing_only').map(r => r.word),
+      });
     }
   } catch {
     // Pre-migration or unit-test environment — SEED_STOPWORDS default remains active
@@ -82,19 +124,25 @@ async function ensureStopwords(supabase) {
 /**
  * Normalize a firm name for fuzzy comparison.
  *
- * Must produce output identical to the SQL normalize_firm_name() function in
- * migration 019: lowercase → strip punct → strip whole-word stopwords → collapse spaces.
+ * Three-pass logic — must produce output identical to the SQL
+ * normalize_firm_name() function (migration 020):
+ *   1. lowercase + strip punctuation
+ *   2. strip 'anywhere' stopwords (global)
+ *   3. collapse spaces
+ *   4. loop: strip 'trailing_only' stopwords from end until stable
  *
  * Used by runConnector.js to populate the normalized_name column on upsert.
  */
 export function normalizeName(name) {
   if (!name) return '';
-  return name
-    .toLowerCase()
-    .replace(PUNCT_RE, '')
-    .replace(_stopwordsRegex, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let s = name.toLowerCase().replace(PUNCT_RE, '');
+  s = s.replace(_anywhereRegex, '').replace(/\s+/g, ' ').trim();
+  let prev;
+  do {
+    prev = s;
+    s = s.replace(_trailingRegex, '').trimEnd();
+  } while (s !== prev && s !== '');
+  return s.replace(/\s+/g, ' ').trim();
 }
 
 export async function resolveFirm(supabase, { cik, firmName, crdNumber }) {

@@ -319,17 +319,63 @@ describe('normalizeName — stopword expansion and two-pass logic', () => {
   });
 });
 
+describe('normalizeName — trailing_only position (migration 020)', () => {
+  // Canonical verification cases from the spec
+  it.each([
+    // Core cases the user asked to verify
+    ['ESR SINGAPORE PTE LTD',         'esr'],      // anywhere 'singapore', trailing 'pte'+'ltd'
+    ['PGIM (SINGAPORE) PTE. LTD.',    'pgim'],     // punct removal + anywhere + trailing loop
+    // Ambiguous token preserved when NOT in trailing position
+    ['AB GLOBAL PARTNERS LLC',        'ab global'],  // 'ab' survives; 'partners'→anywhere, trailing 'llc'
+    ['SAMSUNG ASSET MANAGEMENT SA',   'samsung'],   // anywhere 'asset'+'management', trailing 'sa'
+    // Additional international suffixes
+    ['TOKYO SECURITIES KK',           'tokyo securities'],
+    ['HELSINKI CAPITAL OY',           'helsinki'],  // anywhere 'capital', trailing 'oy'
+    ['AMSTERDAM WEALTH BV',           'amsterdam'], // anywhere 'wealth', trailing 'bv'
+    ['ZURICH AG',                     'zurich'],
+    ['PARIS SARL',                    'paris'],
+    ['OSLO AS',                       'oslo'],
+    // When all boilerplate is stripped, the only remaining ambiguous initialism
+    // also becomes trailing and is correctly removed:
+    ['AS CAPITAL MANAGEMENT AB',      ''],          // capital+management (anywhere), then ab→as→ empty
+    // Multiple trailing suffixes peeled one at a time
+    ['APEX HEDGE FUND PTE. LTD.',     'apex hedge'], // 'fund' anywhere; trailing 'ltd' then 'pte'
+    // llp/plc (new in 020)
+    ['WATSON THORNTON LLP',           'watson thornton'],
+    ['BARCLAYS WEALTH PLC',           'barclays'],
+  ])('normalizeName(%s) → "%s"', (input, expected) => {
+    expect(normalizeName(input)).toBe(expected);
+  });
+
+  it('ambiguous token preserved when a non-stopword follows it', () => {
+    // 'as' is trailing_only. When a non-stopword ('offshore') trails it,
+    // 'as' is never the last token so it is never stripped.
+    expect(normalizeName('AKER AS OFFSHORE')).toBe('aker as offshore');
+    // Contrast: when 'as' IS the trailing token, it is stripped.
+    expect(normalizeName('AKER AS')).toBe('aker');
+    // Similarly for 'ab': trailing → stripped; non-trailing → preserved.
+    expect(normalizeName('AB GLOBAL ADVISORS')).toBe('ab global'); // 'advisors' anywhere; 'global' non-stopword remains
+  });
+});
+
 describe('normalizeName — setStopwords override (Fix C config path)', () => {
-  it('custom stopwords replace the active set', () => {
-    setStopwords(['foo', 'bar']);
-    expect(normalizeName('Foo Capital Bar')).toBe('capital'); // 'foo' and 'bar' stripped
-    // Restore default so subsequent tests are unaffected
-    setStopwords([
-      'llc', 'lp', 'inc', 'incorporated', 'corp', 'corporation', 'ltd', 'limited',
-      'capital', 'management', 'advisors', 'advisers', 'partners', 'group',
-      'holdings', 'asset', 'investments', 'investment', 'fund', 'funds', 'company', 'co',
-      'advisory', 'financial', 'planning', 'wealth', 'services', 'retirement', 'plan',
-      'singapore',
-    ]);
+  it('custom stopwords respect anywhere/trailing split', () => {
+    setStopwords({ anywhere: ['foo'], trailing: ['bar'] });
+    expect(normalizeName('Foo Capital Bar')).toBe('capital');     // 'foo' (anywhere) + 'bar' (trailing) both stripped
+    expect(normalizeName('Bar Foo Capital')).toBe('bar capital'); // 'foo' stripped; 'bar' not trailing → preserved
+    // Restore defaults so subsequent tests are unaffected
+    setStopwords({
+      anywhere: [
+        'capital', 'management', 'advisors', 'advisers', 'advisory', 'partners', 'group',
+        'holdings', 'asset', 'investments', 'investment', 'fund', 'funds',
+        'financial', 'planning', 'wealth', 'services', 'retirement', 'plan', 'singapore',
+      ],
+      trailing: [
+        'llc', 'lp', 'llp', 'inc', 'incorporated', 'corp', 'corporation',
+        'ltd', 'limited', 'plc', 'ulc', 'company', 'co',
+        'pte', 'pty', 'gmbh', 'ag', 'sa', 'sas', 'sarl', 'srl', 'spa',
+        'bv', 'nv', 'ab', 'as', 'aps', 'oy', 'kk',
+      ],
+    });
   });
 });
