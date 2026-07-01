@@ -369,12 +369,14 @@ describe('normalizeName — setStopwords override (Fix C config path)', () => {
         'capital', 'management', 'advisors', 'advisers', 'advisory', 'partners', 'group',
         'holdings', 'asset', 'investments', 'investment', 'fund', 'funds',
         'financial', 'planning', 'wealth', 'services', 'retirement', 'plan', 'singapore',
+        'the',
       ],
       trailing: [
         'llc', 'lp', 'llp', 'inc', 'incorporated', 'corp', 'corporation',
         'ltd', 'limited', 'plc', 'ulc', 'company', 'co',
         'pte', 'pty', 'gmbh', 'ag', 'sa', 'sas', 'sarl', 'srl', 'spa',
         'bv', 'nv', 'ab', 'as', 'aps', 'oy', 'kk',
+        'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x',
       ],
     });
   });

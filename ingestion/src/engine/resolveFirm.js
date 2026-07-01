@@ -49,6 +49,8 @@ const SEED_STOPWORDS = {
     'financial', 'planning', 'wealth', 'services', 'retirement', 'plan',
     // geographic boilerplate
     'singapore',
+    // grammatical particles
+    'the',
   ],
   trailing: [
     // English legal entity types
@@ -64,6 +66,10 @@ const SEED_STOPWORDS = {
     'as', 'aps',                          // Nordic
     'oy',                                 // Finnish
     'kk',                                 // Japanese
+    // Roman numerals: fund/series suffixes (i–x trailing_only)
+    // Trailing-only prevents "I Capital Partners" losing its leading 'I',
+    // same policy as 'ab', 'as'. Accepted edge case: sole-token 'I' → ''.
+    'i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x',
   ],
 };
 
