@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveFirm, normalizeName, setStopwords, setMatcherData } from '../src/engine/resolveFirm.js';
+import { resolveFirm, normalizeName, setStopwords, setMatcherData, computeStage2Score } from '../src/engine/resolveFirm.js';
 
 // ── Fake Supabase builder ─────────────────────────────────────────────────────
 
@@ -429,6 +429,7 @@ const BASE_TOKEN_FREQ = [
   { token: 'place',       idf: 4.2  },
   { token: 'bluestar',    idf: 5.0  },
   { token: 'ventures',    idf: 2.2  },  // NOT distinctive even with len 8 (idf < 2.5)
+  { token: 'blue',        idf: 1.8  },  // common colour word — not distinctive
 ];
 
 const STAGE2_CONFIG = {
@@ -656,12 +657,80 @@ describe('resolveFirm — Stage 2: distinctive-token weighted Jaccard', () => {
     setMatcherData({});
   });
 
+  it('corp/corporation excluded even when corpus IDF is high (entity-suffix guard)', () => {
+    // In a small corpus 'corp' / 'corporation' may appear in only 2–3 firms →
+    // IDF ≈ 3.0–3.2 (above 2.5 threshold). Without _trailingSet exclusion they
+    // would fire a mismatch penalty and dismiss Park Place incorrectly.
+    const tokenFreqHighCorpIdf = [
+      ...BASE_TOKEN_FREQ.filter(t => t.token !== 'corp' && t.token !== 'corporation'),
+      { token: 'corp',        idf: 3.2 },
+      { token: 'corporation', idf: 3.0 },
+    ];
+    setMatcherData({ config: STAGE2_CONFIG, tokenFreq: tokenFreqHighCorpIdf });
+
+    const result = computeStage2Score('Park Place Capital Corp', 'Park Place Capital Corporation');
+    // corp and corporation excluded by _trailingSet → zero mismatch tokens
+    expect(result.distinctiveMismatches).toEqual([]);
+    // park + place both shared → score 1.0
+    expect(result.weightedScore).toBe(1.0);
+    expect(result.fallbackUsed).toBe(false);
+
+    setMatcherData({});
+  });
+
+  it('Blue Capital vs Blue Ventures — dismissed via trigram fallback (no distinctive tokens)', () => {
+    // blue (1.8), capital (1.2), ventures (2.2) — all below distinctiveness threshold.
+    // denominator = 0 → fallback: trigramSim(normalizeName(A), normalizeName(B)).
+    // normalizeName("Blue Capital") = "blue"; normalizeName("Blue Ventures") = "blue ventures"
+    // trigramSim("blue", "blue ventures") ≈ 0.36 (< 0.9 fallback threshold) → dismiss.
+    // Guards against Option A's over-stripping: 'capital' stays in the lightNorm token
+    // set but is non-distinctive; its absence or presence doesn't create a spurious
+    // mismatch penalty because only distinctive tokens enter the scoring loop.
+    setMatcherData({ config: STAGE2_CONFIG, tokenFreq: BASE_TOKEN_FREQ });
+
+    const result = computeStage2Score('Blue Capital', 'Blue Ventures');
+    expect(result.fallbackUsed).toBe(true);
+    expect(result.weightedScore).toBeLessThan(0.9);
+
+    setMatcherData({});
+  });
+
+  it('Point72 anchor case (Case 2): Point72 shared between two variant names → flagged', async () => {
+    // Anchor trace: "Point72 Private Investments LLC" vs "Point72 Global Investment Co"
+    // lightNorm tokens: both include 'point72'; 'llc' and 'co' excluded by _trailingSet.
+    // All other tokens (private, investments, global, investment) are non-distinctive.
+    // score = 5.5 / 5.5 = 1.0 ≥ 0.65 → flag.
+    setMatcherData({ config: STAGE2_CONFIG, tokenFreq: BASE_TOKEN_FREQ });
+
+    const result = computeStage2Score('Point72 Private Investments LLC', 'Point72 Global Investment Co');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.distinctiveMismatches).toEqual([]);
+    expect(result.weightedScore).toBe(1.0);
+
+    setMatcherData({});
+  });
+
+  it('Point72 anchor case (Case 1): distinctive token only in one name → dismissed', () => {
+    // Anchor trace: "Private Management Group Inc" vs "Point72 Private Investments LLC"
+    // 'inc' and 'llc' excluded by _trailingSet. Remaining: private/management/group
+    // vs point72/private/investments. Only point72 is distinctive (digit, IDF 5.5).
+    // It appears only in the candidate → score = 0 / (5.5 * 1.6) = 0 < 0.65 → dismiss.
+    setMatcherData({ config: STAGE2_CONFIG, tokenFreq: BASE_TOKEN_FREQ });
+
+    const result = computeStage2Score('Private Management Group Inc', 'Point72 Private Investments LLC');
+    expect(result.fallbackUsed).toBe(false);
+    expect(result.weightedScore).toBe(0);
+    expect(result.distinctiveMismatches).toContain('point72');
+
+    setMatcherData({});
+  });
+
   it('SQL/JS normalization parity: normalizeName tests cover the Stage 1 normalized_name path', () => {
     // The normalizeName describe blocks above verify that JS output matches the SQL
-    // normalize_firm_name() seeded by the same SEED_STOPWORDS. Stage 2 uses a
-    // separate lightNormalize() path (no stopwords); its parity with the SQL
-    // token_document_freq_raw corpus is established by using the same regex:
-    // [^a-z0-9 ] strip + whitespace collapse, both in JS and in the migration CTE.
+    // normalize_firm_name() seeded by the same SEED_STOPWORDS. Stage 2 tokenises via
+    // lightNormalize() (no stopwords — same regex as the token_document_freq_raw CTE:
+    // [^a-z0-9 ] strip + whitespace collapse). Entity-suffix exclusion uses _trailingSet
+    // populated from the same SEED_STOPWORDS.trailing as the DB trailing_only words.
     expect(true).toBe(true);
   });
 });

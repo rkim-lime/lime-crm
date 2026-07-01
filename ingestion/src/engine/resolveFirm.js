@@ -105,6 +105,7 @@ function buildTrailingRegex(words) {
 
 let _anywhereRegex  = buildAnywhereRegex(SEED_STOPWORDS.anywhere);
 let _trailingRegex  = buildTrailingRegex(SEED_STOPWORDS.trailing);
+let _trailingSet    = new Set(SEED_STOPWORDS.trailing);
 let _stopwordsLoaded = false;
 
 /**
@@ -115,6 +116,7 @@ let _stopwordsLoaded = false;
 export function setStopwords({ anywhere = [], trailing = [] } = {}) {
   _anywhereRegex = buildAnywhereRegex(anywhere);
   _trailingRegex = buildTrailingRegex(trailing);
+  _trailingSet   = new Set(trailing);
 }
 
 /**
@@ -239,7 +241,19 @@ function getIdf(token) {
   return stored !== undefined ? stored : COLD_START_IDF;
 }
 
+// Lightly normalise for Stage 2 tokenisation: lowercase + punct strip only.
+// No stopword removal — preserves second-tier words (capital, ventures, global)
+// so their real corpus IDF can weight the comparison.
+function lightNormalize(name) {
+  if (!name) return '';
+  return name.toLowerCase().replace(PUNCT_RE, '').replace(/\s+/g, ' ').trim();
+}
+
 function isDistinctive(token, idf) {
+  // Entity-type suffixes (trailing stopwords) are NEVER distinctive even when
+  // their corpus IDF is high (small corpus, few firms using 'corp'). Without
+  // this check "corp" ≠ "corporation" fires a false mismatch penalty.
+  if (_trailingSet.has(token)) return false;
   if (token.length < numConfig('min_token_len_for_distinctive', 4)) return false;
   if (boolConfig('digit_tokens_distinctive', true) && /\d/.test(token)) return true;
   return idf >= numConfig('distinctiveness_threshold', 2.5);
@@ -263,14 +277,15 @@ function trigramSim(a, b) {
 }
 
 export function computeStage2Score(rawNameA, rawNameB) {
-  // Tokenise from Stage-1 normalized names (stopwords already stripped).
-  // IDF lookups hit the raw-corpus table — normalized tokens exist there because
-  // they are a subset of raw tokens. This prevents "Corp" ≠ "Corporation" from
-  // firing a mismatch penalty: both are trailing-stripped → same token set.
-  const normA   = normalizeName(rawNameA);
-  const normB   = normalizeName(rawNameB);
-  const tokensA = new Set(normA ? normA.split(' ').filter(Boolean) : []);
-  const tokensB = new Set(normB ? normB.split(' ').filter(Boolean) : []);
+  // Tokenise from lightly-normalised raw names (lowercase + punct only, NO stopword removal).
+  // Entity-type suffixes (corp, corporation, llc, …) are excluded from distinctiveness
+  // via _trailingSet in isDistinctive(), not by stripping them here. This preserves
+  // second-tier words (capital, ventures, global) in the comparison, weighted by their
+  // real corpus IDF — common words self-demote without asymmetric over-stripping.
+  const lightA  = lightNormalize(rawNameA);
+  const lightB  = lightNormalize(rawNameB);
+  const tokensA = new Set(lightA ? lightA.split(' ').filter(Boolean) : []);
+  const tokensB = new Set(lightB ? lightB.split(' ').filter(Boolean) : []);
 
   const wStrength      = numConfig('weighting_strength', 0.6);
   let   numerator      = 0;
@@ -298,13 +313,13 @@ export function computeStage2Score(rawNameA, rawNameB) {
   }
 
   if (denominator === 0) {
-    // No distinctive tokens on either side — fall back to normalized-name trigram
-    // similarity (the user-specified Stage-1 normalized_name path).
-    // Identical all-boilerplate names (both → same normalized string, possibly '')
-    // score 1.0 and remain flagged for human review; different names score low
-    // and are auto-dismissed.
+    // No distinctive tokens on either side — fall back to Stage-1 normalized-name
+    // trigram similarity. normalizeName() strips boilerplate so identical all-
+    // boilerplate names (both → "") score 1.0 and stay flagged for human review;
+    // different-boilerplate names ("blue capital" vs "blue ventures") score low
+    // via the stripped-name comparison and are auto-dismissed.
     return {
-      weightedScore:        trigramSim(normA, normB),
+      weightedScore:        trigramSim(normalizeName(rawNameA), normalizeName(rawNameB)),
       fallbackUsed:         true,
       matchedTokens,
       distinctiveMismatches,
