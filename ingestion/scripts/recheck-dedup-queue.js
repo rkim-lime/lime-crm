@@ -4,18 +4,18 @@
  *
  *   Fix A — CRD/CIK identifier mismatch: if both firms have distinct
  *   non-null regulatory IDs they are definitively different firms →
- *   mark not_duplicate immediately.
+ *   mark not_duplicate and write match_reason with the conflicting IDs.
  *
  *   Fix B — Updated normalization: if name_similarity() (which uses the
  *   expanded stopword set from name_stopwords) drops below the 0.5
- *   threshold → no longer a fuzzy match → mark not_duplicate.
+ *   threshold → no longer a fuzzy match → mark not_duplicate and write
+ *   match_reason with the similarity score.
  *
  *   Fix C — Stage 2 IDF scoring (requires migration 022):
- *   if token_document_freq_raw is available, apply distinctive-token
- *   weighted Jaccard re-scoring. Score < stage2_decision_threshold →
- *   mark not_duplicate and write match_reason for explainability.
- *   Falls back to raw-name trigram similarity when no distinctive tokens
- *   exist. Skipped silently if migration 022 has not been applied.
+ *   apply distinctive-token weighted Jaccard re-scoring. Every outcome
+ *   (flag OR dismiss) writes match_reason for explainability — flags
+ *   update match_reason on the pending row; dismissals update status too.
+ *   Skipped silently if migration 022 has not been applied.
  *
  * Entries that still qualify under all checks remain 'pending' for
  * human review. Genuine duplicates are not touched.
@@ -26,18 +26,22 @@
  *
  * Usage:
  *   node --env-file=.env scripts/recheck-dedup-queue.js
+ *
+ * The main function is also exported for unit testing (pass a fake
+ * supabase client as the first argument).
  */
 
-import { supabase }                               from '../src/supabaseClient.js';
+import { fileURLToPath }                          from 'url';
+import { supabase as defaultSupabase }            from '../src/supabaseClient.js';
 import { setMatcherData, computeStage2Score }     from '../src/engine/resolveFirm.js';
 
 const FIX_B_THRESHOLD = 0.5;
 
-async function loadMatcherData() {
+async function loadMatcherData(sb) {
   try {
     const [cfgResult, freqResult] = await Promise.all([
-      supabase.from('matcher_config').select('key, value'),
-      supabase.from('token_document_freq_raw').select('token, idf'),
+      sb.from('matcher_config').select('key, value'),
+      sb.from('token_document_freq_raw').select('token, idf'),
     ]);
     const config = {};
     if (!cfgResult.error && Array.isArray(cfgResult.data)) {
@@ -54,10 +58,10 @@ async function loadMatcherData() {
   }
 }
 
-async function recheckDedupQueue() {
+export async function recheckDedupQueue(sb = defaultSupabase) {
   console.log('[INFO] Fetching pending dedup_queue entries...');
 
-  const { data: entries, error: fetchErr } = await supabase
+  const { data: entries, error: fetchErr } = await sb
     .from('dedup_queue')
     .select('id, prospect_id, match_type, matched_prospect_id, matched_account_id, similarity, matched_name')
     .eq('status', 'pending');
@@ -70,7 +74,7 @@ async function recheckDedupQueue() {
     return;
   }
 
-  const { config: matcherConfig, stage2Active } = await loadMatcherData();
+  const { config: matcherConfig, stage2Active } = await loadMatcherData(sb);
   const stage2Threshold = Number(matcherConfig['stage2_decision_threshold']  ?? '0.65');
   const fallbackThresh  = Number(matcherConfig['stage2_fallback_similarity_threshold'] ?? '0.9');
   console.log(stage2Active
@@ -84,7 +88,7 @@ async function recheckDedupQueue() {
               .map(e => e.matched_prospect_id),
   ])];
 
-  const { data: prospectsData, error: pErr } = await supabase
+  const { data: prospectsData, error: pErr } = await sb
     .from('prospects')
     .select('id, firm_name, crd_number, cik')
     .in('id', prospectIds);
@@ -98,7 +102,7 @@ async function recheckDedupQueue() {
 
   const accountMap = {};
   if (accountIds.length > 0) {
-    const { data: accountsData, error: aErr } = await supabase
+    const { data: accountsData, error: aErr } = await sb
       .from('accounts')
       .select('id, name, crd_number, cik')
       .in('id', accountIds);
@@ -134,20 +138,30 @@ async function recheckDedupQueue() {
     const prospCrd  = prospect.crd_number ?? null;
     const prospCik  = prospect.cik        ?? null;
 
-    // Fix A: definitive identifier mismatch → not the same firm
+    // Fix A: definitive identifier mismatch → not the same firm.
+    // Writes match_reason with the two conflicting IDs for audit trail.
     const crdMismatch = prospCrd && matchCrd && prospCrd !== matchCrd;
     const cikMismatch = prospCik && matchCik && prospCik !== matchCik;
 
     if (crdMismatch || cikMismatch) {
-      const reason = crdMismatch ? `CRD ${prospCrd} ≠ ${matchCrd}` : `CIK ${prospCik} ≠ ${matchCik}`;
-      await supabase.from('dedup_queue').update({ status: 'not_duplicate' }).eq('id', entry.id);
-      console.log(`  [A] dismiss  "${prospName}" ↔ "${matchName}" — ${reason}`);
+      const matchReason = {
+        stage:    'fix_a',
+        decision: 'dismiss',
+        reason:   'identifier_mismatch',
+        ...(crdMismatch ? { crd_a: prospCrd, crd_b: matchCrd } : {}),
+        ...(cikMismatch ? { cik_a: prospCik, cik_b: matchCik } : {}),
+      };
+      await sb.from('dedup_queue')
+        .update({ status: 'not_duplicate', match_reason: matchReason })
+        .eq('id', entry.id);
+      const label = crdMismatch ? `CRD ${prospCrd} ≠ ${matchCrd}` : `CIK ${prospCik} ≠ ${matchCik}`;
+      console.log(`  [A] dismiss  "${prospName}" ↔ "${matchName}" — ${label}`);
       dismissed++;
       continue;
     }
 
     // Fix B: re-check similarity under updated normalize_firm_name() stopword set
-    const { data: sim, error: simErr } = await supabase
+    const { data: sim, error: simErr } = await sb
       .rpc('name_similarity', { name_a: prospName, name_b: matchName });
 
     if (simErr) {
@@ -158,31 +172,42 @@ async function recheckDedupQueue() {
     }
 
     if (sim !== null && sim < FIX_B_THRESHOLD) {
-      await supabase.from('dedup_queue').update({ status: 'not_duplicate' }).eq('id', entry.id);
+      const matchReason = {
+        stage:     'fix_b',
+        decision:  'dismiss',
+        reason:    'normalized_similarity_below_threshold',
+        similarity: sim,
+        threshold:  FIX_B_THRESHOLD,
+      };
+      await sb.from('dedup_queue')
+        .update({ status: 'not_duplicate', match_reason: matchReason })
+        .eq('id', entry.id);
       console.log(`  [B] dismiss  "${prospName}" ↔ "${matchName}" — similarity ${sim.toFixed(3)} < ${FIX_B_THRESHOLD} (stopword expansion)`);
       dismissed++;
       continue;
     }
 
-    // Fix C: Stage 2 IDF-weighted distinctive-token re-scoring
-    // Only runs when token_document_freq_raw is loaded (migration 022 applied).
+    // Fix C: Stage 2 IDF-weighted distinctive-token re-scoring.
+    // Both flag AND dismiss write match_reason — flags keep status pending but
+    // persist the Stage 2 score for explainability and future re-evaluation.
     if (stage2Active) {
-      const stage2   = computeStage2Score(prospName, matchName);
-      const thresh   = stage2.fallbackUsed ? fallbackThresh : stage2Threshold;
+      const stage2  = computeStage2Score(prospName, matchName);
+      const thresh  = stage2.fallbackUsed ? fallbackThresh : stage2Threshold;
       const decision = stage2.weightedScore >= thresh ? 'flag' : 'dismiss';
 
+      const matchReason = {
+        stage:                       'stage2_recheck',
+        normalized_similarity:       sim,
+        weighted_score:              Math.round(stage2.weightedScore * 1000) / 1000,
+        decision,
+        threshold_applied:           thresh,
+        fallback_used:               stage2.fallbackUsed,
+        distinctive_mismatch_tokens: stage2.distinctiveMismatches,
+        matched_tokens:              stage2.matchedTokens,
+      };
+
       if (decision === 'dismiss') {
-        const matchReason = {
-          stage:                       'stage2_recheck',
-          normalized_similarity:       sim,
-          weighted_score:              Math.round(stage2.weightedScore * 1000) / 1000,
-          decision,
-          threshold_applied:           thresh,
-          fallback_used:               stage2.fallbackUsed,
-          distinctive_mismatch_tokens: stage2.distinctiveMismatches,
-          matched_tokens:              stage2.matchedTokens,
-        };
-        await supabase.from('dedup_queue')
+        await sb.from('dedup_queue')
           .update({ status: 'not_duplicate', match_reason: matchReason })
           .eq('id', entry.id);
         const detail = stage2.fallbackUsed
@@ -190,11 +215,22 @@ async function recheckDedupQueue() {
           : `weighted score ${stage2.weightedScore.toFixed(3)} < ${thresh} (mismatched distinctive: [${stage2.distinctiveMismatches.join(', ')}])`;
         console.log(`  [C] dismiss  "${prospName}" ↔ "${matchName}" — ${detail}`);
         dismissed++;
-        continue;
+      } else {
+        // Flag: status stays 'pending'; persist the Stage 2 score for explainability.
+        await sb.from('dedup_queue')
+          .update({ match_reason: matchReason })
+          .eq('id', entry.id);
+        const detail = stage2.fallbackUsed
+          ? `trigram fallback ${stage2.weightedScore.toFixed(3)} ≥ ${thresh}`
+          : `weighted score ${stage2.weightedScore.toFixed(3)} ≥ ${thresh}`;
+        console.log(`  [C] keep     "${prospName}" ↔ "${matchName}" — ${detail}`);
+        stillPending++;
       }
+      continue;
     }
 
-    console.log(`  [?] keep     "${prospName}" ↔ "${matchName}" — similarity ${sim?.toFixed(3)} (genuine candidate)`);
+    // Cold-start: Stage 2 inactive — Stage 1 result stands, no reason to write.
+    console.log(`  [?] keep     "${prospName}" ↔ "${matchName}" — similarity ${sim?.toFixed(3)} (Stage 2 inactive)`);
     stillPending++;
   }
 
@@ -207,7 +243,10 @@ async function recheckDedupQueue() {
   }
 }
 
-recheckDedupQueue().catch(err => {
-  console.error('[FATAL]', err.message);
-  process.exit(1);
-});
+// Auto-run only when invoked directly as a CLI script.
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  recheckDedupQueue().catch(err => {
+    console.error('[FATAL]', err.message);
+    process.exit(1);
+  });
+}

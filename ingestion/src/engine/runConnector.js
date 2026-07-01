@@ -212,7 +212,14 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
           .eq('status', 'pending')
           .maybeSingle();
 
-        if (!existingDedup) {
+        if (existingDedup) {
+          // Row already exists — refresh match_reason if Stage 2 just computed one.
+          if (resolution.matchReason) {
+            await supabase.from('dedup_queue')
+              .update({ match_reason: resolution.matchReason })
+              .eq('id', existingDedup.id);
+          }
+        } else {
           const isAccountMatch = resolution.resolution === 'fuzzy_account';
           await supabase.from('dedup_queue').insert({
             prospect_id:         prospectId,
