@@ -245,13 +245,6 @@ function isDistinctive(token, idf) {
   return idf >= numConfig('distinctiveness_threshold', 2.5);
 }
 
-// Light normalisation for Stage 2 tokenisation — mirrors what built token_document_freq_raw:
-// lowercase + strip non-alphanumeric + collapse whitespace. No stopword removal.
-function lightNormalize(name) {
-  if (!name) return '';
-  return name.toLowerCase().replace(PUNCT_RE, '').replace(/\s+/g, ' ').trim();
-}
-
 function trigramSet(s) {
   const padded = `  ${s} `;
   const set = new Set();
@@ -269,11 +262,15 @@ function trigramSim(a, b) {
   return shared / (ta.size + tb.size - shared);
 }
 
-function computeStage2Score(rawNameA, rawNameB) {
-  const lightA  = lightNormalize(rawNameA);
-  const lightB  = lightNormalize(rawNameB);
-  const tokensA = new Set(lightA ? lightA.split(' ').filter(Boolean) : []);
-  const tokensB = new Set(lightB ? lightB.split(' ').filter(Boolean) : []);
+export function computeStage2Score(rawNameA, rawNameB) {
+  // Tokenise from Stage-1 normalized names (stopwords already stripped).
+  // IDF lookups hit the raw-corpus table — normalized tokens exist there because
+  // they are a subset of raw tokens. This prevents "Corp" ≠ "Corporation" from
+  // firing a mismatch penalty: both are trailing-stripped → same token set.
+  const normA   = normalizeName(rawNameA);
+  const normB   = normalizeName(rawNameB);
+  const tokensA = new Set(normA ? normA.split(' ').filter(Boolean) : []);
+  const tokensB = new Set(normB ? normB.split(' ').filter(Boolean) : []);
 
   const wStrength      = numConfig('weighting_strength', 0.6);
   let   numerator      = 0;
@@ -301,11 +298,13 @@ function computeStage2Score(rawNameA, rawNameB) {
   }
 
   if (denominator === 0) {
-    // No distinctive tokens on either side — fall back to raw-name trigram similarity.
-    // Identical all-boilerplate names must not be auto-dismissed (they're genuinely
-    // ambiguous without identifiers and should go to human review).
+    // No distinctive tokens on either side — fall back to normalized-name trigram
+    // similarity (the user-specified Stage-1 normalized_name path).
+    // Identical all-boilerplate names (both → same normalized string, possibly '')
+    // score 1.0 and remain flagged for human review; different names score low
+    // and are auto-dismissed.
     return {
-      weightedScore:        trigramSim(lightA, lightB),
+      weightedScore:        trigramSim(normA, normB),
       fallbackUsed:         true,
       matchedTokens,
       distinctiveMismatches,
