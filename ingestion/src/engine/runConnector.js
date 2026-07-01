@@ -221,6 +221,7 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
             matched_prospect_id: isAccountMatch ? null : resolution.matchId,
             similarity:          resolution.similarity,
             matched_name:        resolution.matchName,
+            match_reason:        resolution.matchReason ?? null,
           });
         }
 

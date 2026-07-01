@@ -8,16 +8,30 @@
  *   2. CRD exact  → accounts  (if signal has crdNumber — ADV primary key)
  *   3. CIK exact  → prospects (if signal has cik)
  *   4. CRD exact  → prospects (if signal has crdNumber)
- *   5. fuzzy name → accounts  (via find_similar_firms RPC)
- *   6. fuzzy name → prospects
- *   7. new
+ *   5. Fuzzy name — two-stage hybrid matcher:
+ *      Stage 1: pg_trgm on stripped normalized_name (loose recall,
+ *               threshold from matcher_config.stage1_recall_threshold)
+ *      Fix A:   CRD/CIK mismatch → hard block (highest precedence)
+ *      Stage 2: distinctive-token weighted Jaccard on raw names
+ *               (IDF from token_document_freq_raw, seeded by migration 022)
+ *               Score ≥ stage2_decision_threshold → flag; else dismiss.
+ *               Falls back to raw-name trigram similarity when no distinctive
+ *               tokens exist on either side (avoids auto-dismissing identical
+ *               all-boilerplate names with missing identifiers).
+ *      Stage 2 is INACTIVE when token_document_freq_raw is not loaded
+ *      (empty corpus); in that state Stage 1 results pass through unchanged.
+ *   6. new
  *
  * Results:
  *   { resolution: 'account_match',   accountId }
  *   { resolution: 'prospect_merge',  prospectId }
- *   { resolution: 'fuzzy_account',   matchId, matchName, similarity }
- *   { resolution: 'fuzzy_prospect',  matchId, matchName, similarity }
+ *   { resolution: 'fuzzy_account',   matchId, matchName, similarity, matchReason }
+ *   { resolution: 'fuzzy_prospect',  matchId, matchName, similarity, matchReason }
  *   { resolution: 'new' }
+ *
+ * matchReason shape (written to dedup_queue.match_reason by runConnector):
+ *   { stage, raw_trgm_similarity, weighted_score, decision, threshold_applied,
+ *     fallback_used, distinctive_mismatch_tokens, matched_tokens, identifier_status }
  */
 
 // ── Stopword config (Fix B + C) ───────────────────────────────────────────────
@@ -151,6 +165,161 @@ export function normalizeName(name) {
   return s.replace(/\s+/g, ' ').trim();
 }
 
+// ── Stage 2: hybrid IDF matcher ───────────────────────────────────────────────
+//
+// Metric: Distinctive-Token Weighted Jaccard restricted to tokens flagged as
+// name-distinctive (high IDF, min-length, or digit heuristic).
+//
+//   score = Σ idf(t ∈ shared_distinctive)
+//         / (Σ idf(t ∈ shared_distinctive) + Σ idf(t ∈ mismatched_distinctive) × (1 + wStrength))
+//
+// A distinctive token that appears in one name but not the other amplifies the
+// denominator by (1 + weighting_strength), making mismatches hurt more than
+// matches help — creating a strong asymmetric signal.
+//
+// When denominator=0 (both names are pure boilerplate with no distinctive tokens),
+// falls back to raw-name trigram similarity vs stage2_fallback_similarity_threshold.
+// This catches identical all-boilerplate names ("Capital Management Partners" vs self)
+// that should remain flagged for human review.
+//
+// Stage 2 only activates after token_document_freq_raw is loaded (_tokenFreq.size > 0).
+// Before that (cold-start / pre-migration), Stage 1 results pass through unchanged.
+
+const COLD_START_IDF = 3.5;
+
+let _matcherConfig     = {};
+let _tokenFreq         = new Map();
+let _matcherDataLoaded = false;
+
+/**
+ * Override matcher config and token-frequency map.
+ * Calling this marks the data as loaded, preventing ensureMatcherData from
+ * overwriting it. Used in tests to inject realistic IDF values.
+ */
+export function setMatcherData({ config = {}, tokenFreq = [] } = {}) {
+  _matcherConfig     = config;
+  _tokenFreq         = new Map(tokenFreq.map(({ token, idf }) => [token, Number(idf)]));
+  _matcherDataLoaded = true;
+}
+
+async function ensureMatcherData(supabase) {
+  if (_matcherDataLoaded) return;
+  _matcherDataLoaded = true;
+  try {
+    const [cfgResult, freqResult] = await Promise.all([
+      supabase.from('matcher_config').select('key, value'),
+      supabase.from('token_document_freq_raw').select('token, idf'),
+    ]);
+    const config = {};
+    if (cfgResult && !cfgResult.error && Array.isArray(cfgResult.data)) {
+      for (const { key, value } of cfgResult.data) config[key] = value;
+    }
+    const tokenFreq = [];
+    if (freqResult && !freqResult.error && Array.isArray(freqResult.data)) {
+      for (const { token, idf } of freqResult.data) tokenFreq.push({ token, idf });
+    }
+    setMatcherData({ config, tokenFreq });
+  } catch {
+    setMatcherData({});
+  }
+}
+
+function numConfig(key, defaultVal) {
+  const v = _matcherConfig?.[key];
+  return v != null ? Number(v) : defaultVal;
+}
+
+function boolConfig(key, defaultVal) {
+  const v = _matcherConfig?.[key];
+  return v != null ? v === 'true' : defaultVal;
+}
+
+function getIdf(token) {
+  const stored = _tokenFreq.get(token);
+  return stored !== undefined ? stored : COLD_START_IDF;
+}
+
+function isDistinctive(token, idf) {
+  if (token.length < numConfig('min_token_len_for_distinctive', 4)) return false;
+  if (boolConfig('digit_tokens_distinctive', true) && /\d/.test(token)) return true;
+  return idf >= numConfig('distinctiveness_threshold', 2.5);
+}
+
+// Light normalisation for Stage 2 tokenisation — mirrors what built token_document_freq_raw:
+// lowercase + strip non-alphanumeric + collapse whitespace. No stopword removal.
+function lightNormalize(name) {
+  if (!name) return '';
+  return name.toLowerCase().replace(PUNCT_RE, '').replace(/\s+/g, ' ').trim();
+}
+
+function trigramSet(s) {
+  const padded = `  ${s} `;
+  const set = new Set();
+  for (let i = 0; i <= padded.length - 3; i++) set.add(padded.slice(i, i + 3));
+  return set;
+}
+
+function trigramSim(a, b) {
+  if (a === b) return 1;
+  if (!a || !b) return 0;
+  const ta = trigramSet(a);
+  const tb = trigramSet(b);
+  let shared = 0;
+  for (const t of ta) if (tb.has(t)) shared++;
+  return shared / (ta.size + tb.size - shared);
+}
+
+function computeStage2Score(rawNameA, rawNameB) {
+  const lightA  = lightNormalize(rawNameA);
+  const lightB  = lightNormalize(rawNameB);
+  const tokensA = new Set(lightA ? lightA.split(' ').filter(Boolean) : []);
+  const tokensB = new Set(lightB ? lightB.split(' ').filter(Boolean) : []);
+
+  const wStrength      = numConfig('weighting_strength', 0.6);
+  let   numerator      = 0;
+  let   denominator    = 0;
+  const matchedTokens         = [];
+  const distinctiveMismatches = [];
+
+  for (const token of new Set([...tokensA, ...tokensB])) {
+    const idf         = getIdf(token);
+    const distinctive = isDistinctive(token, idf);
+    if (!distinctive) continue;
+
+    const inA = tokensA.has(token);
+    const inB = tokensB.has(token);
+
+    if (inA && inB) {
+      numerator   += idf;
+      denominator += idf;
+      matchedTokens.push({ token, idf: Math.round(idf * 100) / 100, matched: true });
+    } else {
+      denominator += idf * (1 + wStrength);
+      distinctiveMismatches.push(token);
+      matchedTokens.push({ token, idf: Math.round(idf * 100) / 100, matched: false });
+    }
+  }
+
+  if (denominator === 0) {
+    // No distinctive tokens on either side — fall back to raw-name trigram similarity.
+    // Identical all-boilerplate names must not be auto-dismissed (they're genuinely
+    // ambiguous without identifiers and should go to human review).
+    return {
+      weightedScore:        trigramSim(lightA, lightB),
+      fallbackUsed:         true,
+      matchedTokens,
+      distinctiveMismatches,
+    };
+  }
+
+  return {
+    weightedScore:        numerator / denominator,
+    fallbackUsed:         false,
+    matchedTokens,
+    distinctiveMismatches,
+  };
+}
+
 export async function resolveFirm(supabase, { cik, firmName, crdNumber }) {
   // ── Step 1: exact CIK match against accounts ─────────────────
   if (cik) {
@@ -195,16 +364,24 @@ export async function resolveFirm(supabase, { cik, firmName, crdNumber }) {
     if (!crdPrspErr && prospByCrd) return { resolution: 'prospect_merge', prospectId: prospByCrd.id };
   }
 
-  // ── Steps 5–6: fuzzy name match via RPC ──────────────────────
-  await ensureStopwords(supabase); // idempotent — loads stopwords once per process
+  // ── Steps 5–6: fuzzy name match via two-stage hybrid matcher ────────────────
+  await Promise.all([
+    ensureStopwords(supabase),    // idempotent — loads stopwords once per process
+    ensureMatcherData(supabase),  // idempotent — loads config + token freq once per process
+  ]);
 
+  const stage1Threshold = numConfig('stage1_recall_threshold', 0.5);
   const { data: fuzzyMatches, error: rpcErr } = await supabase
-    .rpc('find_similar_firms', { search_name: firmName, threshold: 0.5 });
+    .rpc('find_similar_firms', { search_name: firmName, threshold: stage1Threshold });
 
   if (rpcErr) {
     // RPC may not exist yet (migration not applied). Fall through to 'new'.
     return { resolution: 'new' };
   }
+
+  const stage2Active    = _tokenFreq.size > 0;
+  const stage2Threshold = numConfig('stage2_decision_threshold', 0.65);
+  const fallbackThresh  = numConfig('stage2_fallback_similarity_threshold', 0.9);
 
   if (fuzzyMatches?.length) {
     for (const candidate of fuzzyMatches) {
@@ -218,22 +395,45 @@ export async function resolveFirm(supabase, { cik, firmName, crdNumber }) {
         && candidate.cik !== cik;
       if (crdMismatch || cikMismatch) continue;
 
-      if (candidate.match_type === 'account') {
-        return {
-          resolution: 'fuzzy_account',
-          matchId:    candidate.id,
-          matchName:  candidate.name,
-          similarity: candidate.similarity,
+      // Stage 2: IDF-weighted distinctive-token scoring.
+      // Skip Stage 2 when token_document_freq_raw hasn't been loaded yet
+      // (pre-migration or DB unavailable) — fall through to Stage 1 result.
+      if (stage2Active) {
+        const stage2 = computeStage2Score(firmName, candidate.name);
+        const thresh  = stage2.fallbackUsed ? fallbackThresh : stage2Threshold;
+        const decision = stage2.weightedScore >= thresh ? 'flag' : 'dismiss';
+
+        const identifierStatus =
+          (crdNumber && candidate.crd_number && crdNumber === candidate.crd_number) ? 'crd_match'
+          : (cik && candidate.cik && cik === candidate.cik) ? 'cik_match'
+          : 'no_conflict';
+
+        const matchReason = {
+          stage:                       'stage2',
+          raw_trgm_similarity:         candidate.similarity,
+          weighted_score:              Math.round(stage2.weightedScore * 1000) / 1000,
+          decision,
+          threshold_applied:           thresh,
+          fallback_used:               stage2.fallbackUsed,
+          distinctive_mismatch_tokens: stage2.distinctiveMismatches,
+          matched_tokens:              stage2.matchedTokens,
+          identifier_status:           identifierStatus,
         };
+
+        if (decision === 'dismiss') continue;
+
+        return candidate.match_type === 'account'
+          ? { resolution: 'fuzzy_account',  matchId: candidate.id, matchName: candidate.name, similarity: candidate.similarity, matchReason }
+          : { resolution: 'fuzzy_prospect', matchId: candidate.id, matchName: candidate.name, similarity: candidate.similarity, matchReason };
       }
-      return {
-        resolution: 'fuzzy_prospect',
-        matchId:    candidate.id,
-        matchName:  candidate.name,
-        similarity: candidate.similarity,
-      };
+
+      // Cold-start path (Stage 2 inactive): Stage 1 result stands.
+      const matchReason = { stage: 'stage1_only', raw_trgm_similarity: candidate.similarity };
+      return candidate.match_type === 'account'
+        ? { resolution: 'fuzzy_account',  matchId: candidate.id, matchName: candidate.name, similarity: candidate.similarity, matchReason }
+        : { resolution: 'fuzzy_prospect', matchId: candidate.id, matchName: candidate.name, similarity: candidate.similarity, matchReason };
     }
-    // All candidates rejected due to identifier mismatches — treat as new
+    // All candidates rejected (Fix A mismatches or Stage 2 dismissals)
   }
 
   // ── Step 7: no match ─────────────────────────────────────────
