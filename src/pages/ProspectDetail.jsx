@@ -5,7 +5,7 @@ import RoleGate from '../components/RoleGate';
 import ConfirmModal from '../components/ConfirmModal';
 import { useProspect, useUpdateProspect, useConvertProspectToAccount } from '../hooks/useProspects';
 import { useProfiles } from '../hooks/useDashboard';
-import { ErrorBanner, fmtDate, fmtRelTime } from './shared';
+import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource } from './shared';
 
 const STATUS_OPTS = [
   { value: 'uncontacted',  label: 'Uncontacted' },
@@ -216,9 +216,9 @@ export default function ProspectDetail() {
           ← Prospects
         </button>
         <StatusDot status={p.status} />
-        {p.source === 'sec_13f' && (
+        {p.source && (
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: 4 }}>
-            SEC 13F
+            {fmtProspectSource(p.source)}
           </span>
         )}
         <span style={{ flex: 1 }} />
@@ -374,7 +374,7 @@ export default function ProspectDetail() {
               </DetailRow>
             )}
             <DetailRow label="Source">
-              {p.source === 'sec_13f' ? 'SEC 13F' : p.source?.replace(/_/g, ' ') ?? '—'}
+              {fmtProspectSource(p.source)}
             </DetailRow>
             <DetailRow label="Jurisdiction">
               {p.jurisdiction?.toUpperCase() ?? '—'}

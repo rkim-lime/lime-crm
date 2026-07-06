@@ -18,6 +18,25 @@ const DETAIL_EXTRA = `
   promoted_to_account_id, promoted_at, promoted_by
 `;
 
+// Returns the distinct source values present in the prospects table.
+// Used to build the Source filter dropdown dynamically — new sources appear
+// automatically without code changes.
+export function useProspectSources() {
+  return useQuery({
+    queryKey: ['prospect-sources'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('prospects')
+        .select('source')
+        .eq('is_audit_only', false)
+        .not('source', 'is', null);
+      if (error) throw error;
+      return [...new Set((data ?? []).map(p => p.source))].sort();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useProspects(filters = {}) {
   return useQuery({
     queryKey: ['prospects', filters],

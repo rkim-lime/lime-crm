@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { useProspects } from '../hooks/useProspects';
+import { useProspects, useProspectSources } from '../hooks/useProspects';
 import { useDedupQueueCount } from '../hooks/useDedup';
 import { useProfiles } from '../hooks/useDashboard';
-import { TableSkeleton, ErrorBanner, fmtRelTime } from './shared';
+import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource } from './shared';
 
 const STATUS_OPTS = [
   { value: '',             label: 'All Statuses' },
@@ -16,12 +16,6 @@ const STATUS_OPTS = [
   { value: 'promoted',     label: 'Promoted' },
 ];
 
-const SOURCE_OPTS = [
-  { value: '',        label: 'All Sources' },
-  { value: 'sec_13f', label: 'SEC 13F' },
-  { value: 'manual',  label: 'Manual' },
-  { value: 'referral',label: 'Referral' },
-];
 
 const SEGMENT_OPTS = [
   { value: '',             label: 'All Segments' },
@@ -84,7 +78,7 @@ function StatusDot({ status }) {
 export default function Prospects() {
   const navigate = useNavigate();
   const [statusFilter,   setStatus]   = useState('');
-  const [sourceFilter,   setSource]   = useState('sec_13f');
+  const [sourceFilter,   setSource]   = useState('');
   const [segmentFilter,  setSegment]  = useState('');
   const [assigneeFilter, setAssignee] = useState('');
   const [search,         setSearch]   = useState('');
@@ -103,6 +97,11 @@ export default function Prospects() {
   const allProspects = useProspects({ ...baseFilters, icpOnly: false });
   const { data: dedupCount = 0 } = useDedupQueueCount();
   const profiles = useProfiles();
+  const { data: rawSources = [] } = useProspectSources();
+  const sourceOpts = [
+    { value: '', label: 'All Sources' },
+    ...rawSources.map(s => ({ value: s, label: fmtProspectSource(s) })),
+  ];
 
   return (
     <Layout title="Prospects">
@@ -118,7 +117,7 @@ export default function Prospects() {
           {STATUS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select className="filter-select" value={sourceFilter} onChange={e => setSource(e.target.value)}>
-          {SOURCE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          {sourceOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
         <select className="filter-select" value={segmentFilter} onChange={e => setSegment(e.target.value)}>
           {SEGMENT_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -212,7 +211,7 @@ export default function Prospects() {
                     )}
                   </td>
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                    {p.source === 'sec_13f' ? 'SEC 13F' : p.source?.replace(/_/g, ' ') ?? '—'}
+                    {fmtProspectSource(p.source)}
                   </td>
                   <td style={{ fontSize: 12.5 }}>
                     {p.inferred_segment ? (SEGMENT_LABELS[p.inferred_segment] ?? p.inferred_segment) : '—'}

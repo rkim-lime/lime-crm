@@ -1,5 +1,22 @@
 // Shared display helpers used across pages
 
+// ── Prospect source labels ────────────────────────────────────────────────────
+// Single source of truth for raw source values → display labels.
+// Fallback: title-case the raw value so unmapped future sources never
+// show blank or break anything.
+export const PROSPECT_SOURCE_LABELS = {
+  sec_13f:  'SEC 13F',
+  sec_adv:  'SEC ADV',
+  manual:   'Manual',
+  referral: 'Referral',
+};
+
+export function fmtProspectSource(source) {
+  if (!source) return '—';
+  return PROSPECT_SOURCE_LABELS[source]
+    ?? source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function TierBadge({ tier }) {
   if (!tier) return null;
   return <span className={`badge badge-tier-${tier}`}>{tier}</span>;
