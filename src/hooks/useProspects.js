@@ -18,22 +18,22 @@ const DETAIL_EXTRA = `
   promoted_to_account_id, promoted_at, promoted_by
 `;
 
-// Returns the distinct source values present in the prospects table.
-// Used to build the Source filter dropdown dynamically — new sources appear
-// automatically without code changes.
-export function useProspectSources() {
+// Loads the source_registry table — maps source_key → channel + display_label.
+// This is the data-driven replacement for the old PROSPECT_SOURCE_LABELS static map.
+// All rows are returned (including inactive) so label resolution works for
+// historical prospects whose source was later deactivated.
+export function useSourceRegistry() {
   return useQuery({
-    queryKey: ['prospect-sources'],
+    queryKey: ['source-registry'],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('prospects')
-        .select('source')
-        .eq('is_audit_only', false)
-        .not('source', 'is', null);
+        .from('source_registry')
+        .select('source_key, channel, display_label, is_active, sort_order')
+        .order('sort_order', { ascending: true });
       if (error) throw error;
-      return [...new Set((data ?? []).map(p => p.source))].sort();
+      return data ?? [];
     },
-    staleTime: 5 * 60 * 1000,
+    staleTime: 10 * 60 * 1000,
   });
 }
 
@@ -53,9 +53,10 @@ export function useProspects(filters = {}) {
       const icpOnly = filters.icpOnly !== undefined ? filters.icpOnly : true;
       if (icpOnly) q = q.eq('passes_icp', true);
 
-      if (filters.status)   q = q.eq('status', filters.status);
-      if (filters.source)   q = q.eq('source', filters.source);
-      if (filters.segment)  q = q.eq('inferred_segment', filters.segment);
+      if (filters.status)               q = q.eq('status', filters.status);
+      if (filters.source)               q = q.eq('source', filters.source);
+      else if (filters.sources?.length) q = q.in('source', filters.sources);
+      if (filters.segment)              q = q.eq('inferred_segment', filters.segment);
       if (filters.assignee) q = q.eq('assigned_to', filters.assignee);
       if (filters.search)   q = q.ilike('firm_name', `%${filters.search}%`);
       const { data, error } = await q;

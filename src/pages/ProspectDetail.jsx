@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
 import ConfirmModal from '../components/ConfirmModal';
-import { useProspect, useUpdateProspect, useConvertProspectToAccount } from '../hooks/useProspects';
+import { useProspect, useUpdateProspect, useConvertProspectToAccount, useSourceRegistry } from '../hooks/useProspects';
 import { useProfiles } from '../hooks/useDashboard';
 import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource } from './shared';
 
@@ -144,10 +144,11 @@ export default function ProspectDetail() {
   const [noteDraft, setNoteDraft]       = useState('');
   const [convertConfirm, setConvertConfirm] = useState(false);
 
-  const prospect  = useProspect(id);
-  const profiles  = useProfiles();
-  const update    = useUpdateProspect();
-  const convert   = useConvertProspectToAccount();
+  const prospect         = useProspect(id);
+  const profiles         = useProfiles();
+  const update           = useUpdateProspect();
+  const convert          = useConvertProspectToAccount();
+  const { data: registry = [] } = useSourceRegistry();
 
   if (prospect.isLoading) {
     return (
@@ -218,7 +219,7 @@ export default function ProspectDetail() {
         <StatusDot status={p.status} />
         {p.source && (
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', padding: '2px 8px', borderRadius: 4 }}>
-            {fmtProspectSource(p.source)}
+            {fmtProspectSource(p.source, registry)}
           </span>
         )}
         <span style={{ flex: 1 }} />
@@ -374,7 +375,7 @@ export default function ProspectDetail() {
               </DetailRow>
             )}
             <DetailRow label="Source">
-              {fmtProspectSource(p.source)}
+              {fmtProspectSource(p.source, registry)}
             </DetailRow>
             <DetailRow label="Jurisdiction">
               {p.jurisdiction?.toUpperCase() ?? '—'}

@@ -1,20 +1,14 @@
 // Shared display helpers used across pages
 
 // ── Prospect source labels ────────────────────────────────────────────────────
-// Single source of truth for raw source values → display labels.
-// Fallback: title-case the raw value so unmapped future sources never
-// show blank or break anything.
-export const PROSPECT_SOURCE_LABELS = {
-  sec_13f:  'SEC 13F',
-  sec_adv:  'SEC ADV',
-  manual:   'Manual',
-  referral: 'Referral',
-};
-
-export function fmtProspectSource(source) {
+// Labels come from the source_registry table (loaded via useSourceRegistry).
+// Pass the registry array from that hook; falls back to title-casing the raw
+// key so anything not yet in the registry still renders cleanly.
+export function fmtProspectSource(source, registry = []) {
   if (!source) return '—';
-  return PROSPECT_SOURCE_LABELS[source]
-    ?? source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const entry = registry.find(r => r.source_key === source);
+  if (entry) return entry.display_label;
+  return source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export function TierBadge({ tier }) {

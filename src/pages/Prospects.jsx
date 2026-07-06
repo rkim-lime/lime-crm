@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { useProspects, useProspectSources } from '../hooks/useProspects';
+import { useProspects, useSourceRegistry } from '../hooks/useProspects';
 import { useDedupQueueCount } from '../hooks/useDedup';
 import { useProfiles } from '../hooks/useDashboard';
 import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource } from './shared';
@@ -78,18 +78,44 @@ function StatusDot({ status }) {
 export default function Prospects() {
   const navigate = useNavigate();
   const [statusFilter,   setStatus]   = useState('');
+  const [channelFilter,  setChannel]  = useState('');
   const [sourceFilter,   setSource]   = useState('');
   const [segmentFilter,  setSegment]  = useState('');
   const [assigneeFilter, setAssignee] = useState('');
   const [search,         setSearch]   = useState('');
   const [icpOnly,        setIcpOnly]  = useState(true);
 
+  const { data: registry = [] } = useSourceRegistry();
+
+  // Sorted active registry entries — drives both filter option lists
+  const activeRegistry = registry
+    .filter(r => r.is_active)
+    .sort((a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99));
+
+  // Distinct channels in sort order
+  const channels = [...new Set(activeRegistry.map(r => r.channel))];
+  const channelOpts = [
+    { value: '', label: 'All Channels' },
+    ...channels.map(ch => ({ value: ch, label: ch.charAt(0).toUpperCase() + ch.slice(1) })),
+  ];
+
+  // Sources within the selected channel (only shown when channel is selected)
+  const sourceSubOpts = channelFilter
+    ? activeRegistry.filter(r => r.channel === channelFilter)
+    : [];
+
   const baseFilters = {};
   if (statusFilter)   baseFilters.status   = statusFilter;
-  if (sourceFilter)   baseFilters.source   = sourceFilter;
   if (segmentFilter)  baseFilters.segment  = segmentFilter;
   if (assigneeFilter) baseFilters.assignee = assigneeFilter;
   if (search)         baseFilters.search   = search;
+  // Channel/source filter: specific source takes precedence over channel
+  if (sourceFilter) {
+    baseFilters.source = sourceFilter;
+  } else if (channelFilter) {
+    const cs = activeRegistry.filter(r => r.channel === channelFilter).map(r => r.source_key);
+    if (cs.length > 0) baseFilters.sources = cs;
+  }
 
   const filters = { ...baseFilters, icpOnly };
 
@@ -97,11 +123,6 @@ export default function Prospects() {
   const allProspects = useProspects({ ...baseFilters, icpOnly: false });
   const { data: dedupCount = 0 } = useDedupQueueCount();
   const profiles = useProfiles();
-  const { data: rawSources = [] } = useProspectSources();
-  const sourceOpts = [
-    { value: '', label: 'All Sources' },
-    ...rawSources.map(s => ({ value: s, label: fmtProspectSource(s) })),
-  ];
 
   return (
     <Layout title="Prospects">
@@ -116,9 +137,21 @@ export default function Prospects() {
         <select className="filter-select" value={statusFilter} onChange={e => setStatus(e.target.value)}>
           {STATUS_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
-        <select className="filter-select" value={sourceFilter} onChange={e => setSource(e.target.value)}>
-          {sourceOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        <select
+          className="filter-select"
+          value={channelFilter}
+          onChange={e => { setChannel(e.target.value); setSource(''); }}
+        >
+          {channelOpts.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
+        {channelFilter && sourceSubOpts.length > 1 && (
+          <select className="filter-select" value={sourceFilter} onChange={e => setSource(e.target.value)}>
+            <option value="">All {channelOpts.find(o => o.value === channelFilter)?.label ?? 'Sources'}</option>
+            {sourceSubOpts.map(o => (
+              <option key={o.source_key} value={o.source_key}>{o.display_label}</option>
+            ))}
+          </select>
+        )}
         <select className="filter-select" value={segmentFilter} onChange={e => setSegment(e.target.value)}>
           {SEGMENT_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
         </select>
@@ -211,7 +244,7 @@ export default function Prospects() {
                     )}
                   </td>
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
-                    {fmtProspectSource(p.source)}
+                    {fmtProspectSource(p.source, registry)}
                   </td>
                   <td style={{ fontSize: 12.5 }}>
                     {p.inferred_segment ? (SEGMENT_LABELS[p.inferred_segment] ?? p.inferred_segment) : '—'}
