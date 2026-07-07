@@ -113,34 +113,120 @@ export function inferSegment(firmName) {
 }
 
 /**
- * Derive the institutional segment for an ADV firm from client-type evidence.
+ * Match a firm name against the segment_name_signals config rows.
  *
- * Priority order (most-specific direct evidence first):
- *  1. Quant name + pooled/private fund evidence → quant_fund
- *  2. Pooled vehicles dominant (no institutional mix) → hedge_fund
- *  3. Institutional clients present (pension, institutional) → asset_manager
- *     Even if hasPrivateFundClients=true. Direct client-type beats the flag.
- *  4. Retail only (HNW/individuals, no pooled) → wealth_manager
- *  5. hasPrivateFundClients flag, no client types → hedge_fund (flag-only)
- *  6. Name heuristic fallback (low confidence)
- *
- * This is the single source of truth used by both the ADV connector
- * (normalizeFromFirm) and the normalizer (extractSignals), so that live
- * ingest and backfill always produce identical results.
+ * Each row: { pattern, target_segment, signal_kind ('name_signal'|'fund_name'),
+ *             vetoes_hedge_fund, confidence, sort_order, is_active }.
+ * `pattern` is a case-insensitive regex fragment. Invalid patterns are skipped.
+ * Returns the matching rows sorted strongest-first (confidence desc, then
+ * sort_order asc) so callers can take the first match as the winner.
  */
-export function deriveAdvSegment(firmName, clientTypes, hasPrivateFundClients) {
+export function matchNameSignals(firmName, nameSignals = []) {
+  const name = firmName ?? '';
+  const rank = { high: 3, medium: 2, low: 1 };
+  const matches = [];
+  for (const rule of nameSignals ?? []) {
+    if (rule?.is_active === false || !rule?.pattern) continue;
+    let re;
+    try { re = new RegExp(rule.pattern, 'i'); } catch { continue; }
+    if (re.test(name)) matches.push(rule);
+  }
+  matches.sort((a, b) =>
+    (rank[b.confidence] ?? 0) - (rank[a.confidence] ?? 0)
+    || (a.sort_order ?? 999) - (b.sort_order ?? 999)
+  );
+  return matches;
+}
+
+/**
+ * Derive the institutional segment for an ADV firm.
+ *
+ * Core principle: hedge_fund is EARNED (dominant pooled/private-fund
+ * composition, or a corroborating fund name), never DEFAULTED. Weak /
+ * conflicting / flag-only-with-neutral-name firms resolve to 'unknown'
+ * (an honest null → enrichment queue), NOT a hedge_fund guess.
+ *
+ * Priority order:
+ *  (1) Non-empty clientTypes → composition with dominance:
+ *      - pooled is the sole macro-category → hedge_fund (EARNED)
+ *        · a vetoing name (vetoes_hedge_fund=true) redirects to its target
+ *        · a fund-type name (quant/prop) refines to that subtype
+ *      - institutional / pension clients present → asset_manager (dominant)
+ *      - retail (HNW/individuals) present, pooled not dominant → wealth_manager
+ *      - none of the above resolved → 'unknown'
+ *  (2) Empty clientTypes:
+ *      - a strong name signal → its target segment (confidence per rule)
+ *      - a fund-corroborating name → hedge_fund (medium)
+ *      - neutral/ambiguous name → 'unknown' (the private-fund flag alone is
+ *        NOT enough to earn hedge_fund)
+ *  (3) Name VETO is enforced inside the pooled-dominant branch and, for empty
+ *      clientTypes, by the name signal itself winning over any fund_name.
+ *
+ * Name-signal patterns/targets/veto/confidence come from `nameSignals` (the
+ * segment_name_signals config table), never inline. Returns
+ * { value, confidence, basis } so callers get a fully-formed provenance tuple.
+ * This is the single source of truth used by both the ADV connector and the
+ * normalizer, so live ingest and backfill produce identical results.
+ */
+export function deriveAdvSegment(firmName, clientTypes, hasPrivateFundClients, nameSignals = []) {
   const ct = clientTypes ?? [];
+  const matches      = matchNameSignals(firmName, nameSignals);
+  const vetoRule     = matches.find(r => r.vetoes_hedge_fund);
+  const nameSigRule  = matches.find(r => r.signal_kind === 'name_signal');
+  const fundNameRule = matches.find(r => r.signal_kind === 'fund_name');
+
   const hasPooled        = ct.includes('pooled_investment_vehicles');
   const hasInstitutional = ct.includes('pension_plans') || ct.includes('institutional');
   const hasRetail        = ct.includes('high_net_worth') || ct.includes('individuals');
-  const isQuant          = /quant(?:itative)?|systematic|algo(?:rithm)?/i.test(firmName ?? '');
 
-  if (isQuant && (hasPooled || hasPrivateFundClients)) return 'quant_fund';
-  if (hasPooled && !hasInstitutional)                  return 'hedge_fund';
-  if (hasInstitutional)                                return 'asset_manager';
-  if (hasRetail && !hasPooled)                         return 'wealth_manager';
-  if (hasPrivateFundClients)                           return 'hedge_fund';
-  return inferSegment(firmName); // name-only fallback → low confidence
+  // ── (1) Composition with dominance (client-type evidence present) ──────────
+  if (ct.length > 0) {
+    // Pooled vehicles are the ONLY macro-category present → hedge_fund is earned.
+    if (hasPooled && !hasInstitutional && !hasRetail) {
+      // Strong non-HF name vetoes the hedge_fund call → redirect to its target.
+      if (vetoRule) {
+        return { value: vetoRule.target_segment, confidence: 'medium', basis: 'adv_name_veto' };
+      }
+      // Fund-type name (quant/prop) refines to that subtype (same tier).
+      if (nameSigRule && !nameSigRule.vetoes_hedge_fund
+          && ['quant_fund', 'prop_trading'].includes(nameSigRule.target_segment)) {
+        return { value: nameSigRule.target_segment, confidence: 'high', basis: 'adv_client_type' };
+      }
+      return { value: 'hedge_fund', confidence: 'high', basis: 'adv_client_type' };
+    }
+
+    // Institutional / pension clients dominate → asset_manager. Confidence is
+    // downgraded to medium when the private-fund flag or a pooled/retail mix
+    // muddies the structure (the Tremont/Bluescape/Clearbridge patterns).
+    if (hasInstitutional) {
+      const conf = (hasPrivateFundClients || hasPooled || hasRetail) ? 'medium' : 'high';
+      return { value: 'asset_manager', confidence: conf, basis: 'adv_client_type' };
+    }
+
+    // Retail present (HNW/individuals), pooled NOT clearly dominant → wealth_manager.
+    if (hasRetail) {
+      return { value: 'wealth_manager', confidence: 'high', basis: 'adv_client_type' };
+    }
+
+    // Client types present but none resolved a dominant category → unknown.
+    return { value: 'unknown', confidence: 'medium', basis: 'adv_client_type' };
+  }
+
+  // ── (2) Empty clientTypes — name evidence only ─────────────────────────────
+  // A strong name signal (incl. any vetoing non-HF name) wins first.
+  if (nameSigRule) {
+    return { value: nameSigRule.target_segment, confidence: nameSigRule.confidence, basis: 'adv_name_signal' };
+  }
+  // A fund-corroborating name earns hedge_fund by name (medium).
+  if (fundNameRule) {
+    return { value: 'hedge_fund', confidence: 'medium', basis: 'adv_name_signal' };
+  }
+  // Neutral / ambiguous name — the private-fund flag alone is NOT enough.
+  return {
+    value:      'unknown',
+    confidence: 'low',
+    basis:      hasPrivateFundClients ? 'adv_flag_only' : 'adv_name_signal',
+  };
 }
 
 /**

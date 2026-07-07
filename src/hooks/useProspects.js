@@ -7,7 +7,7 @@ import { supabase } from '../lib/supabase';
 const FIELDS = `
   id, firm_name, cik, source, source_url, status, jurisdiction,
   estimated_aum_usd, position_count, portfolio_turnover_pct,
-  equities_pct, options_present, inferred_segment,
+  equities_pct, options_present, inferred_segment, segment_canonical,
   fit_score, fit_score_computed_at, passes_icp, is_audit_only,
   notes, created_at, updated_at,
   assigned_to,
@@ -37,6 +37,27 @@ export function useSourceRegistry() {
   });
 }
 
+// Loads segment labels from taxonomy_values (the 'segment' taxonomy) — the
+// single source of truth for prospect segment display, mirroring
+// useSourceRegistry. Ordered by sort_order so filter option lists are stable.
+export function useSegmentTaxonomy() {
+  return useQuery({
+    queryKey: ['segment-taxonomy'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('taxonomy_values')
+        .select('value_key, label, sort_order, fit_tier, taxonomies!inner(taxonomy_key)')
+        .eq('taxonomies.taxonomy_key', 'segment')
+        .order('sort_order', { ascending: true });
+      if (error) throw error;
+      return (data ?? []).map(({ value_key, label, sort_order, fit_tier }) => ({
+        value_key, label, sort_order, fit_tier,
+      }));
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
 export function useProspects(filters = {}) {
   return useQuery({
     queryKey: ['prospects', filters],
@@ -56,7 +77,12 @@ export function useProspects(filters = {}) {
       if (filters.status)               q = q.eq('status', filters.status);
       if (filters.source)               q = q.eq('source', filters.source);
       else if (filters.sources?.length) q = q.in('source', filters.sources);
-      if (filters.segment)              q = q.eq('inferred_segment', filters.segment);
+      // Segment filter maps to segment_canonical (the authoritative, config-driven
+      // value). Multi-select via `segments` (array); `hideUnknown` pulls the
+      // enrichment-queue firms out of the working view.
+      if (filters.segments?.length)     q = q.in('segment_canonical', filters.segments);
+      else if (filters.segment)         q = q.eq('segment_canonical', filters.segment);
+      if (filters.hideUnknown)          q = q.neq('segment_canonical', 'unknown');
       if (filters.assignee) q = q.eq('assigned_to', filters.assignee);
       if (filters.search)   q = q.ilike('firm_name', `%${filters.search}%`);
       const { data, error } = await q;
@@ -126,11 +152,14 @@ export function useConvertProspectToAccount() {
       const segmentToTier = {
         hedge_fund:    'enterprise',
         quant_fund:    'enterprise',
+        prop_trading:  'pro',
         prop_trader:   'pro',
         broker_dealer: 'enterprise',
         pension:       'enterprise',
       };
-      const tier = segmentToTier[prospect.inferred_segment] ?? 'enterprise';
+      // Prefer the authoritative segment_canonical; fall back to the raw connector value.
+      const segment = prospect.segment_canonical ?? prospect.inferred_segment ?? null;
+      const tier = segmentToTier[segment] ?? 'enterprise';
 
       // Build asset class list from ingested signals
       const relevantAssetClasses = ['equities'];
@@ -142,7 +171,7 @@ export function useConvertProspectToAccount() {
         .insert({
           name:                        prospect.firm_name,
           tier,
-          segment:                     prospect.inferred_segment ?? null,
+          segment:                     segment,
           aum_usd:                     prospect.estimated_aum_usd ?? null,
           jurisdiction:                prospect.jurisdiction ?? null,
           status:                      'prospect',
@@ -169,7 +198,7 @@ export function useConvertProspectToAccount() {
           first_name:   'Unknown',
           last_name:    'Contact',
           title:        `Primary Contact — ${prospect.firm_name}`,
-          segment:      prospect.inferred_segment ?? null,
+          segment:      segment,
           jurisdiction: prospect.jurisdiction ?? null,
           owner_id:     prospect.assigned_to ?? user?.id ?? null,
         })

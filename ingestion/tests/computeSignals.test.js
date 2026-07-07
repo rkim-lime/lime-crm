@@ -17,8 +17,27 @@ import {
   computeTurnover,
   assetMix,
   inferSegment,
+  deriveAdvSegment,
+  matchNameSignals,
   computePassesICP,
 } from '../src/engine/computeSignals.js';
+
+// Name-signal config fixture — mirrors the seed rows in migration 024
+// (segment_name_signals). Passed to deriveAdvSegment so the tests exercise the
+// data-driven path exactly as production does.
+const NAME_SIGNALS = [
+  { pattern: 'wealth',                                            target_segment: 'wealth_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'medium', sort_order: 1,  is_active: true },
+  { pattern: 'retirement|\\bretire',                              target_segment: 'wealth_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 2,  is_active: true },
+  { pattern: '\\bbank\\b|trust\\s+company|trust\\s+bank|national\\s+association', target_segment: 'bank', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 3, is_active: true },
+  { pattern: 'insurance|assurance',                               target_segment: 'insurance',      signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 4,  is_active: true },
+  { pattern: 'pension|endowment|foundation',                     target_segment: 'pension',        signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 5,  is_active: true },
+  { pattern: 'family\\s+office',                                 target_segment: 'family_office',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 6,  is_active: true },
+  { pattern: 'broker|dealer|brokerage|securities',               target_segment: 'broker_dealer',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 7,  is_active: true },
+  { pattern: 'quant(?:itative)?|systematic|algorithmic',         target_segment: 'quant_fund',     signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8,  is_active: true },
+  { pattern: 'prop(?:rietary)?|trading\\s+co',                   target_segment: 'prop_trading',   signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true },
+  { pattern: '\\bhedge\\b',                                       target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 10, is_active: true },
+  { pattern: 'master\\s+fund|feeder\\s+fund|offshore\\s+fund',    target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 11, is_active: true },
+];
 
 // ── estimateAUM ───────────────────────────────────────────────────────────────
 
@@ -276,5 +295,163 @@ describe('computePassesICP', () => {
       advFlags:               { hasPrivateFundClients: true },
     };
     expect(computePassesICP(mkCapital, { min_aum_usd: 100_000_000 })).toBe(true);
+  });
+});
+
+// ── matchNameSignals ──────────────────────────────────────────────────────────
+
+describe('matchNameSignals', () => {
+  it('returns [] when no rule matches', () => {
+    expect(matchNameSignals('Sanders Morris Harris', NAME_SIGNALS)).toEqual([]);
+  });
+
+  it('returns [] for empty config', () => {
+    expect(matchNameSignals('Anything Wealth', [])).toEqual([]);
+  });
+
+  it('matches a rule case-insensitively', () => {
+    const m = matchNameSignals('EVERWEALTH CAPITAL', NAME_SIGNALS);
+    expect(m[0].target_segment).toBe('wealth_manager');
+  });
+
+  it('sorts strongest-first (confidence desc, then sort_order asc)', () => {
+    // "Wealth Trust Bank" matches wealth (medium) + bank (low) → wealth wins
+    const m = matchNameSignals('Wealth Trust Bank', NAME_SIGNALS);
+    expect(m[0].target_segment).toBe('wealth_manager'); // medium beats low
+    expect(m.map(r => r.target_segment)).toContain('bank');
+  });
+
+  it('skips inactive and invalid-regex rules', () => {
+    const cfg = [
+      { pattern: '(', target_segment: 'bank', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 1, is_active: true },
+      { pattern: 'wealth', target_segment: 'wealth_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 2, is_active: false },
+      { pattern: 'pension', target_segment: 'pension', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 3, is_active: true },
+    ];
+    const m = matchNameSignals('Wealth Pension Bank', cfg);
+    expect(m).toHaveLength(1);                    // invalid '(' skipped, inactive 'wealth' skipped
+    expect(m[0].target_segment).toBe('pension');
+  });
+});
+
+// ── deriveAdvSegment ────────────────────────────────────────────────────────────
+//
+// Core principle: hedge_fund is EARNED, never defaulted. Anchor cases below map
+// to the Part D verification set (Argent/iCapital/KA → unknown, Waterway →
+// wealth_manager, Tremont → asset_manager, a dominant-pooled firm → hedge_fund).
+
+describe('deriveAdvSegment — composition with dominance', () => {
+  it('dominant pooled vehicles → hedge_fund (EARNED)', () => {
+    const r = deriveAdvSegment('Meridian Partners LP', ['pooled_investment_vehicles'], true, NAME_SIGNALS);
+    expect(r.value).toBe('hedge_fund');
+    expect(r.confidence).toBe('high');
+    expect(r.basis).toBe('adv_client_type');
+  });
+
+  it('Waterway: HNW + pooled (pooled not dominant) → wealth_manager', () => {
+    const r = deriveAdvSegment('Waterway Advisors', ['high_net_worth', 'pooled_investment_vehicles'], false, NAME_SIGNALS);
+    expect(r.value).toBe('wealth_manager');
+    expect(r.confidence).toBe('high');
+  });
+
+  it('HNW / individuals only → wealth_manager (positive retail evidence)', () => {
+    const r = deriveAdvSegment('Anytown Advisors', ['high_net_worth', 'individuals'], false, NAME_SIGNALS);
+    expect(r.value).toBe('wealth_manager');
+  });
+
+  it('Tremont: pension_plans + private-fund flag → asset_manager (control, unchanged)', () => {
+    const r = deriveAdvSegment('Tremont Group', ['pension_plans'], true, NAME_SIGNALS);
+    expect(r.value).toBe('asset_manager');
+    expect(r.confidence).toBe('medium'); // flag conflicts with institutional composition
+  });
+
+  it('institutional clients dominate over pooled → asset_manager', () => {
+    const r = deriveAdvSegment('Clearbridge Investments', ['pooled_investment_vehicles', 'institutional'], true, NAME_SIGNALS);
+    expect(r.value).toBe('asset_manager');
+  });
+
+  it('clean institutional-only → asset_manager/high', () => {
+    const r = deriveAdvSegment('Institutional Advisors', ['institutional'], false, NAME_SIGNALS);
+    expect(r.value).toBe('asset_manager');
+    expect(r.confidence).toBe('high');
+  });
+});
+
+describe('deriveAdvSegment — name veto blocks hedge_fund', () => {
+  it('pooled-dominant BUT strong non-HF name → veto redirects to the name target', () => {
+    // Composition alone would earn hedge_fund; the "wealth" veto blocks it.
+    const r = deriveAdvSegment('Everwealth Capital', ['pooled_investment_vehicles'], true, NAME_SIGNALS);
+    expect(r.value).not.toBe('hedge_fund');
+    expect(r.value).toBe('wealth_manager');
+    expect(r.basis).toBe('adv_name_veto');
+  });
+
+  it('pooled-dominant + quant name → refines to quant_fund (not a veto)', () => {
+    const r = deriveAdvSegment('Quant Systematic Fund', ['pooled_investment_vehicles'], true, NAME_SIGNALS);
+    expect(r.value).toBe('quant_fund');
+    expect(r.confidence).toBe('high');
+  });
+});
+
+describe('deriveAdvSegment — empty clientTypes (unknown unless earned)', () => {
+  it('Argent: flag-only + neutral name → unknown (was hedge_fund)', () => {
+    const r = deriveAdvSegment('Argent Group LLC', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('unknown');
+    expect(r.confidence).toBe('low');
+    expect(r.basis).toBe('adv_flag_only');
+  });
+
+  it('iCapital: flag-only + neutral name (generic "capital") → unknown', () => {
+    const r = deriveAdvSegment('iCapital Advisors LLC', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('unknown');
+  });
+
+  it('KA Credit: flag-only, "credit" is NOT a segment signal → unknown', () => {
+    const r = deriveAdvSegment('KA Credit Advisors LLC', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('unknown');
+  });
+
+  it('flag-only is NOT enough for hedge_fund even with pooled flag set', () => {
+    const r = deriveAdvSegment('Opaque Holdings LLC', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('unknown');
+  });
+
+  it('strong name signal (no client data) → that segment at rule confidence', () => {
+    const r = deriveAdvSegment('Granite Wealth Management', [], false, NAME_SIGNALS);
+    expect(r.value).toBe('wealth_manager');
+    expect(r.confidence).toBe('medium');
+    expect(r.basis).toBe('adv_name_signal');
+  });
+
+  it('fund-corroborating name (no client data) → hedge_fund/medium (earned by name)', () => {
+    const r = deriveAdvSegment('Tiger Hedge Master Fund', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('hedge_fund');
+    expect(r.confidence).toBe('medium');
+  });
+
+  it('neutral name + no flag → unknown/low', () => {
+    const r = deriveAdvSegment('Sanders Morris Harris', [], false, NAME_SIGNALS);
+    expect(r.value).toBe('unknown');
+    expect(r.confidence).toBe('low');
+  });
+});
+
+describe('deriveAdvSegment — config-driven (changing a config row changes behavior)', () => {
+  it('with no config, a strong-name firm falls back to unknown; with config it classifies', () => {
+    const withoutCfg = deriveAdvSegment('Granite Wealth Management', [], false, []);
+    expect(withoutCfg.value).toBe('unknown');
+
+    const withCfg = deriveAdvSegment('Granite Wealth Management', [], false, NAME_SIGNALS);
+    expect(withCfg.value).toBe('wealth_manager');
+  });
+
+  it('adding a credit rule would route "credit" firms — proving table-driven behavior', () => {
+    const creditCfg = [
+      ...NAME_SIGNALS,
+      { pattern: 'credit', target_segment: 'asset_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 12, is_active: true },
+    ];
+    // Default config: 'KA Credit' is unknown (no credit rule)
+    expect(deriveAdvSegment('KA Credit Advisors', [], true, NAME_SIGNALS).value).toBe('unknown');
+    // With a credit rule added to the table: same firm now routes to asset_manager
+    expect(deriveAdvSegment('KA Credit Advisors', [], true, creditCfg).value).toBe('asset_manager');
   });
 });

@@ -11,6 +11,17 @@ export function fmtProspectSource(source, registry = []) {
   return source.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── Prospect segment labels ───────────────────────────────────────────────────
+// Labels are the single source of truth in taxonomy_values.label (loaded via
+// useSegmentTaxonomy). Pass that array; falls back to title-casing the raw
+// value_key so any unlabeled/legacy key still renders cleanly.
+export function fmtSegment(key, segmentValues = []) {
+  if (!key) return '—';
+  const hit = segmentValues.find(s => s.value_key === key);
+  if (hit?.label) return hit.label;
+  return String(key).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function TierBadge({ tier }) {
   if (!tier) return null;
   return <span className={`badge badge-tier-${tier}`}>{tier}</span>;

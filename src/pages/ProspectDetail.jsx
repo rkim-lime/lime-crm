@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
 import ConfirmModal from '../components/ConfirmModal';
-import { useProspect, useUpdateProspect, useConvertProspectToAccount, useSourceRegistry } from '../hooks/useProspects';
+import { useProspect, useUpdateProspect, useConvertProspectToAccount, useSourceRegistry, useSegmentTaxonomy } from '../hooks/useProspects';
 import { useProfiles } from '../hooks/useDashboard';
-import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource } from './shared';
+import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource, fmtSegment } from './shared';
 
 const STATUS_OPTS = [
   { value: 'uncontacted',  label: 'Uncontacted' },
@@ -23,14 +23,6 @@ const STATUS_COLOR = {
   disqualified: 'var(--red)',
   converted:    '#7c3aed',
   promoted:     '#7c3aed',
-};
-
-const SEGMENT_LABELS = {
-  hedge_fund:    'Hedge Fund',
-  quant_fund:    'Quant Fund',
-  prop_trader:   'Prop Trader',
-  broker_dealer: 'Broker-Dealer',
-  pension:       'Pension / Endowment',
 };
 
 function fmtAUM(n) {
@@ -149,6 +141,7 @@ export default function ProspectDetail() {
   const update           = useUpdateProspect();
   const convert          = useConvertProspectToAccount();
   const { data: registry = [] } = useSourceRegistry();
+  const { data: segmentValues = [] } = useSegmentTaxonomy();
 
   if (prospect.isLoading) {
     return (
@@ -258,7 +251,7 @@ export default function ProspectDetail() {
                   : <span style={{ color: 'var(--text-tertiary)' }}>No</span>}
               </DetailRow>
               <DetailRow label="Segment">
-                {p.inferred_segment ? (SEGMENT_LABELS[p.inferred_segment] ?? p.inferred_segment) : '—'}
+                {fmtSegment(p.segment_canonical, segmentValues)}
               </DetailRow>
             </div>
 

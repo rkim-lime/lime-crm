@@ -31,7 +31,7 @@ const SCORING_DIMENSIONS = new Set([
  * Returns an object keyed by signal_key, each value being a provenance tuple:
  *   { value, basis, source, as_of, confidence }
  */
-export function extractSignals(firmSignal) {
+export function extractSignals(firmSignal, nameSignals = []) {
   const signals = {};
   const src = firmSignal.source;
 
@@ -112,34 +112,19 @@ export function extractSignals(firmSignal) {
       // Always recompute from primary evidence — never read firmSignal.inferred_segment.
       // The backfill sets inferred_segment = inferSegment(firmName) (name heuristic only),
       // which ignores clientTypes and advFlags entirely. Reading it here would produce
-      // wrong segments for backfill runs (Clearbridge → 'other', MK Capital → 'asset_manager').
-      // Same principle as 13F: recompute from the actual data, ignore the cached field.
+      // wrong segments for backfill runs. Same principle as 13F: recompute from the actual
+      // data, ignore the cached field. deriveAdvSegment reads the name-signal config
+      // (segment_name_signals) so backfill and live ingest produce identical results.
       const clientTypes  = firmSignal.clientTypes ?? [];
       const hasPrivFund  = firmSignal.advFlags?.hasPrivateFundClients ?? false;
-      const segValue     = deriveAdvSegment(firmSignal.firmName, clientTypes, hasPrivFund);
+      const seg = deriveAdvSegment(firmSignal.firmName, clientTypes, hasPrivFund, nameSignals);
 
-      // Three-tier confidence for ADV segment:
-      //   high   — clean, unconflicted client-type signal
-      //   medium — signals conflict (see cases below), or flag-only
-      //   low    — no ADV client data; fell back to name heuristic
-      const hasPooled        = clientTypes.includes('pooled_investment_vehicles');
-      const hasInstitutional = clientTypes.some(t => ['pension_plans', 'institutional'].includes(t));
-      const clientTypeDriven = clientTypes.length > 0 || hasPrivFund;
-      // isMixed:    pooled + institutional both present → ambiguous structure
-      // isConflict: institutional present BUT hasPrivateFundClients=true (Bluescape/Tremont)
-      // isFlagOnly: private-fund flag set, no client-type data — best guess, incomplete picture
-      const isMixed    = hasPooled && hasInstitutional;
-      const isConflict = hasInstitutional && hasPrivFund;
-      const isFlagOnly = hasPrivFund && !clientTypes.length;
-      const confidence = !clientTypeDriven ? 'low'
-        : (isMixed || isConflict || isFlagOnly) ? 'medium'
-        : 'high';
       signals.segment_inferred = {
-        value:      segValue,
-        basis:      clientTypeDriven ? 'adv_client_type' : 'adv_name_heuristic',
+        value:      seg.value,
+        basis:      seg.basis,
         source:     'sec_adv',
         as_of:      null,
-        confidence,
+        confidence: seg.confidence,
       };
     }
 
@@ -327,17 +312,27 @@ async function loadSizeBands(supabase) {
   return data ?? [];
 }
 
+async function loadNameSignals(supabase) {
+  const { data } = await supabase
+    .from('segment_name_signals')
+    .select('pattern, target_segment, signal_kind, vetoes_hedge_fund, confidence, sort_order, is_active')
+    .eq('is_active', true)
+    .order('sort_order');
+  return data ?? [];
+}
+
 /**
  * Load all reference tables needed for normalization.
  * Call once per connector run; pass the result as `refs` to normalizeFirm.
  */
 export async function loadNormalizationRefs(supabase) {
-  const [signalDefs, segmentMappings, sizeBands] = await Promise.all([
+  const [signalDefs, segmentMappings, sizeBands, nameSignals] = await Promise.all([
     loadSignalDefs(supabase),
     loadSegmentMappings(supabase),
     loadSizeBands(supabase),
+    loadNameSignals(supabase),
   ]);
-  return { signalDefs, segmentMappings, sizeBands };
+  return { signalDefs, segmentMappings, sizeBands, nameSignals };
 }
 
 async function loadExistingNormalized(supabase, { prospectId, accountId }) {
@@ -415,11 +410,11 @@ export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
   const { supabase, logger } = ctx;
   const { prospectId = null, accountId = null } = entityRef;
 
-  const { signalDefs, segmentMappings, sizeBands } =
+  const { signalDefs, segmentMappings, sizeBands, nameSignals } =
     refs ?? await loadNormalizationRefs(supabase);
 
   // ── 1. Extract signals from this connector run ─────────────────────────────
-  const currentSignals = extractSignals(firmSignal);
+  const currentSignals = extractSignals(firmSignal, nameSignals);
 
   // ── 2. Load existing accumulated normalized_signals and merge ─────────────
   const existingNorm = await loadExistingNormalized(supabase, { prospectId, accountId });

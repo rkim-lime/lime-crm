@@ -227,11 +227,15 @@ describe('parseFirmBlock', () => {
       expect(signal.inferred_segment).toBe('asset_manager');
     });
 
-    it('MK Capital: hasPrivateFundClients=true, no client types → hedge_fund (flag-only)', () => {
+    it('MK Capital: hasPrivateFundClients=true, no client types → unknown (flag-only is NOT enough for hedge_fund)', () => {
+      // hedge_fund must be EARNED. Flag-only with no client-type data resolves to
+      // 'unknown' (enrichment queue), not a hedge_fund guess. The connector runs
+      // composition-only (no name-signal config); the neutral 'MK Capital' name
+      // does not corroborate a fund either way.
       const signal = parseFirmBlock(MK_CAPITAL_XML);
       expect(signal.clientTypes).toEqual([]);
       expect(signal.advFlags.hasPrivateFundClients).toBe(true);
-      expect(signal.inferred_segment).toBe('hedge_fund');
+      expect(signal.inferred_segment).toBe('unknown');
     });
 
     it('Rabenold: HNW + individuals, no private fund → wealth_manager', () => {

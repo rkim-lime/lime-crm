@@ -7,7 +7,7 @@ const QUEUE_FIELDS = `
   resolved_at, resolved_by, created_at,
   prospect:prospects!dedup_queue_prospect_id_fkey(
     id, firm_name, estimated_aum_usd, position_count, portfolio_turnover_pct,
-    equities_pct, options_present, fit_score, cik, status, inferred_segment, source
+    equities_pct, options_present, fit_score, cik, status, inferred_segment, segment_canonical, source
   ),
   matched_prospect:prospects!dedup_queue_matched_prospect_id_fkey(
     id, firm_name, estimated_aum_usd, fit_score, cik, status

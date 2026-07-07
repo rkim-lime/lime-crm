@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { useProspects, useSourceRegistry } from '../hooks/useProspects';
+import { useProspects, useSourceRegistry, useSegmentTaxonomy } from '../hooks/useProspects';
 import { useDedupQueueCount } from '../hooks/useDedup';
 import { useProfiles } from '../hooks/useDashboard';
-import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource } from './shared';
+import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource, fmtSegment } from './shared';
 
 const STATUS_OPTS = [
   { value: '',             label: 'All Statuses' },
@@ -17,15 +17,6 @@ const STATUS_OPTS = [
 ];
 
 
-const SEGMENT_OPTS = [
-  { value: '',             label: 'All Segments' },
-  { value: 'hedge_fund',   label: 'Hedge Fund' },
-  { value: 'quant_fund',   label: 'Quant Fund' },
-  { value: 'prop_trader',  label: 'Prop Trader' },
-  { value: 'broker_dealer',label: 'Broker-Dealer' },
-  { value: 'pension',      label: 'Pension / Endowment' },
-];
-
 const STATUS_COLOR = {
   uncontacted:  'var(--text-tertiary)',
   contacted:    'var(--accent)',
@@ -35,13 +26,73 @@ const STATUS_COLOR = {
   promoted:     '#7c3aed',
 };
 
-const SEGMENT_LABELS = {
-  hedge_fund:    'Hedge Fund',
-  quant_fund:    'Quant Fund',
-  prop_trader:   'Prop Trader',
-  broker_dealer: 'Broker-Dealer',
-  pension:       'Pension',
-};
+// Multi-select segment filter with a "hide unknowns" toggle. Options come from
+// taxonomy_values (useSegmentTaxonomy). Maps to segment_canonical via the
+// `segments` array + `hideUnknown` filters in useProspects.
+function SegmentFilter({ segmentValues, selected, onToggle, onClear, hideUnknown, onToggleHideUnknown }) {
+  const [open, setOpen] = useState(false);
+  const label = selected.length
+    ? `${selected.length} segment${selected.length > 1 ? 's' : ''}`
+    : (hideUnknown ? 'Segments · excl. Unknown' : 'All Segments');
+  const rowStyle = {
+    display: 'flex', alignItems: 'center', gap: 7, padding: '5px 6px',
+    fontSize: 12.5, color: 'var(--text-secondary)', cursor: 'pointer', borderRadius: 4,
+    whiteSpace: 'nowrap',
+  };
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        type="button"
+        className="filter-select"
+        onClick={() => setOpen(o => !o)}
+        style={{ cursor: 'pointer', whiteSpace: 'nowrap', textAlign: 'left', minWidth: 150 }}
+      >
+        {label} <span style={{ color: 'var(--text-tertiary)' }}>▾</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 19 }} />
+          <div
+            style={{
+              position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20,
+              background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+              borderRadius: 6, padding: 6, minWidth: 200, maxHeight: 340, overflowY: 'auto',
+              boxShadow: '0 6px 20px rgba(0,0,0,0.14)',
+            }}
+          >
+            <label style={rowStyle}>
+              <input type="checkbox" checked={hideUnknown} onChange={onToggleHideUnknown} />
+              Hide unknowns
+            </label>
+            <div style={{ height: 1, background: 'var(--border)', margin: '5px 2px' }} />
+            {segmentValues.map(s => (
+              <label key={s.value_key} style={rowStyle}>
+                <input
+                  type="checkbox"
+                  checked={selected.includes(s.value_key)}
+                  onChange={() => onToggle(s.value_key)}
+                />
+                {s.label}
+              </label>
+            ))}
+            {selected.length > 0 && (
+              <>
+                <div style={{ height: 1, background: 'var(--border)', margin: '5px 2px' }} />
+                <button
+                  type="button"
+                  onClick={onClear}
+                  style={{ ...rowStyle, width: '100%', border: 'none', background: 'none', color: 'var(--accent)' }}
+                >
+                  Clear selection
+                </button>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function fmtAUM(n) {
   if (n == null) return '—';
@@ -80,12 +131,17 @@ export default function Prospects() {
   const [statusFilter,   setStatus]   = useState('');
   const [channelFilter,  setChannel]  = useState('');
   const [sourceFilter,   setSource]   = useState('');
-  const [segmentFilter,  setSegment]  = useState('');
+  const [segments,       setSegments] = useState([]);
+  const [hideUnknown,    setHideUnknown] = useState(false);
   const [assigneeFilter, setAssignee] = useState('');
   const [search,         setSearch]   = useState('');
   const [icpOnly,        setIcpOnly]  = useState(true);
 
   const { data: registry = [] } = useSourceRegistry();
+  const { data: segmentValues = [] } = useSegmentTaxonomy();
+
+  const toggleSegment = (key) =>
+    setSegments(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]);
 
   // Sorted active registry entries — drives both filter option lists
   const activeRegistry = registry
@@ -106,7 +162,9 @@ export default function Prospects() {
 
   const baseFilters = {};
   if (statusFilter)   baseFilters.status   = statusFilter;
-  if (segmentFilter)  baseFilters.segment  = segmentFilter;
+  if (segments.length) baseFilters.segments = segments;
+  // hide-unknowns only applies when 'unknown' isn't explicitly selected
+  if (hideUnknown && !segments.includes('unknown')) baseFilters.hideUnknown = true;
   if (assigneeFilter) baseFilters.assignee = assigneeFilter;
   if (search)         baseFilters.search   = search;
   // Channel/source filter: specific source takes precedence over channel
@@ -152,9 +210,14 @@ export default function Prospects() {
             ))}
           </select>
         )}
-        <select className="filter-select" value={segmentFilter} onChange={e => setSegment(e.target.value)}>
-          {SEGMENT_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
+        <SegmentFilter
+          segmentValues={segmentValues}
+          selected={segments}
+          onToggle={toggleSegment}
+          onClear={() => setSegments([])}
+          hideUnknown={hideUnknown}
+          onToggleHideUnknown={e => setHideUnknown(e.target.checked)}
+        />
         <select className="filter-select" value={assigneeFilter} onChange={e => setAssignee(e.target.value)}>
           <option value="">All Assignees</option>
           {(profiles.data ?? []).map(p => (
@@ -247,7 +310,7 @@ export default function Prospects() {
                     {fmtProspectSource(p.source, registry)}
                   </td>
                   <td style={{ fontSize: 12.5 }}>
-                    {p.inferred_segment ? (SEGMENT_LABELS[p.inferred_segment] ?? p.inferred_segment) : '—'}
+                    {fmtSegment(p.segment_canonical, segmentValues)}
                   </td>
                   <td style={{ fontSize: 12.5, fontWeight: 500 }}>{fmtAUM(p.estimated_aum_usd)}</td>
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>

@@ -2,16 +2,8 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useDedupQueue, useDedupQueueCount, useResolveDedup } from '../hooks/useDedup';
-import { fmtRelTime, ErrorBanner } from './shared';
-
-const SEGMENT_LABELS = {
-  hedge_fund:    'Hedge Fund',
-  quant_fund:    'Quant Fund',
-  prop_trader:   'Prop Trader',
-  broker_dealer: 'Broker-Dealer',
-  pension:       'Pension',
-  family_office: 'Family Office',
-};
+import { useSegmentTaxonomy } from '../hooks/useProspects';
+import { fmtRelTime, ErrorBanner, fmtSegment } from './shared';
 
 function fmtAUM(n) {
   if (n == null) return '—';
@@ -39,6 +31,7 @@ function ResolutionBadge({ status }) {
 
 function QueueCard({ item, resolve }) {
   const [confirming, setConfirming] = useState(false);
+  const { data: segmentValues = [] } = useSegmentTaxonomy();
   const isResolved   = item.status !== 'pending';
   const isVsAccount  = item.match_type === 'account';
   const prospect     = item.prospect;
@@ -72,7 +65,7 @@ function QueueCard({ item, resolve }) {
           <div style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 2 }}>
             {fmtAUM(prospect?.estimated_aum_usd)}
             {prospect?.fit_score != null ? ` · Fit ${prospect.fit_score}` : ''}
-            {prospect?.inferred_segment ? ` · ${SEGMENT_LABELS[prospect.inferred_segment] ?? prospect.inferred_segment}` : ''}
+            {prospect?.segment_canonical ? ` · ${fmtSegment(prospect.segment_canonical, segmentValues)}` : ''}
           </div>
           {prospect?.cik && (
             <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 2, fontFamily: 'monospace' }}>

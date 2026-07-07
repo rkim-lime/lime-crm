@@ -50,7 +50,22 @@ const SIGNAL_DEFS = [
   { signal_key: 'segment_inferred',       canonical_dimension: 'segment' },
 ];
 
-const REFS = { signalDefs: SIGNAL_DEFS, segmentMappings: SEGMENT_MAPPINGS, sizeBands: SIZE_BANDS };
+// Name-signal config fixture — mirrors migration 024 seed (segment_name_signals).
+const NAME_SIGNALS = [
+  { pattern: 'wealth',                                            target_segment: 'wealth_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'medium', sort_order: 1,  is_active: true },
+  { pattern: 'retirement|\\bretire',                              target_segment: 'wealth_manager', signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 2,  is_active: true },
+  { pattern: '\\bbank\\b|trust\\s+company|trust\\s+bank|national\\s+association', target_segment: 'bank', signal_kind: 'name_signal', vetoes_hedge_fund: true, confidence: 'low', sort_order: 3, is_active: true },
+  { pattern: 'insurance|assurance',                               target_segment: 'insurance',      signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 4,  is_active: true },
+  { pattern: 'pension|endowment|foundation',                     target_segment: 'pension',        signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 5,  is_active: true },
+  { pattern: 'family\\s+office',                                 target_segment: 'family_office',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 6,  is_active: true },
+  { pattern: 'broker|dealer|brokerage|securities',               target_segment: 'broker_dealer',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 7,  is_active: true },
+  { pattern: 'quant(?:itative)?|systematic|algorithmic',         target_segment: 'quant_fund',     signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8,  is_active: true },
+  { pattern: 'prop(?:rietary)?|trading\\s+co',                   target_segment: 'prop_trading',   signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true },
+  { pattern: '\\bhedge\\b',                                       target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 10, is_active: true },
+  { pattern: 'master\\s+fund|feeder\\s+fund|offshore\\s+fund',    target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 11, is_active: true },
+];
+
+const REFS = { signalDefs: SIGNAL_DEFS, segmentMappings: SEGMENT_MAPPINGS, sizeBands: SIZE_BANDS, nameSignals: NAME_SIGNALS };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -80,7 +95,9 @@ function firmADV(overrides = {}) {
     regulatoryAum:          8_000_000_000,
     estimated_aum_usd:      8_000_000_000,
     inferred_segment:       'quant_fund',
-    clientTypes:            ['pooled_investment_vehicles', 'high_net_worth'],
+    // Pooled-only default → hedge_fund composition, refined to quant_fund by the
+    // quant name signal (requires NAME_SIGNALS to be passed to extractSignals).
+    clientTypes:            ['pooled_investment_vehicles'],
     advFlags:               { hasPrivateFundClients: true },
     quarters:               [],
     ...overrides,
@@ -153,7 +170,7 @@ describe('extractSignals — 13F', () => {
 
 describe('extractSignals — ADV', () => {
   it('extracts ADV signals with correct provenance', () => {
-    const sigs = extractSignals(firmADV());
+    const sigs = extractSignals(firmADV(), NAME_SIGNALS);
     expect(sigs.aum_adv_regulatory).toMatchObject({
       value:      8_000_000_000,
       basis:      'adv_regulatory',
@@ -162,11 +179,11 @@ describe('extractSignals — ADV', () => {
       confidence: 'high',
     });
     expect(sigs.segment_inferred).toMatchObject({
-      value:      'quant_fund',
+      value:      'quant_fund',   // pooled-only → hedge composition, refined by quant name
       basis:      'adv_client_type',
       confidence: 'high',
     });
-    expect(sigs.client_types.value).toEqual(['pooled_investment_vehicles', 'high_net_worth']);
+    expect(sigs.client_types.value).toEqual(['pooled_investment_vehicles']);
     expect(sigs.has_private_fund_clients).toMatchObject({
       value:      true,
       basis:      'adv_item7a',
@@ -175,21 +192,23 @@ describe('extractSignals — ADV', () => {
   });
 
   it('omits aum_adv_regulatory when regulatoryAum is null (private-fund-only)', () => {
-    const sigs = extractSignals(firmADV({ regulatoryAum: null }));
+    const sigs = extractSignals(firmADV({ regulatoryAum: null }), NAME_SIGNALS);
     expect(sigs.aum_adv_regulatory).toBeUndefined();
   });
 
-  it('marks segment confidence=low when no client-type data', () => {
+  it('no client-type data + neutral name → unknown/low (honest null, not a guess)', () => {
     const sigs = extractSignals(firmADV({
+      firmName:    'Sanders Morris Harris',   // no name signal matches
       clientTypes: [],
       advFlags:    { hasPrivateFundClients: false },
-    }));
+    }), NAME_SIGNALS);
+    expect(sigs.segment_inferred.value).toBe('unknown');
     expect(sigs.segment_inferred.confidence).toBe('low');
-    expect(sigs.segment_inferred.basis).toBe('adv_name_heuristic');
+    expect(sigs.segment_inferred.basis).toBe('adv_name_signal');
   });
 
   it('does not produce 13F-only signals', () => {
-    const sigs = extractSignals(firmADV());
+    const sigs = extractSignals(firmADV(), NAME_SIGNALS);
     expect(sigs.aum_13f_portfolio).toBeUndefined();
     expect(sigs.turnover_pct).toBeUndefined();
     expect(sigs.equities_pct).toBeUndefined();
@@ -199,29 +218,29 @@ describe('extractSignals — ADV', () => {
 describe('extractSignals — ADV segment derived from clientTypes, not cached inferred_segment', () => {
   it('ignores stale inferred_segment; recomputes from clientTypes (Clearbridge backfill regression)', () => {
     // Backfill sets inferred_segment = inferSegment('Clearbridge Investments LLC') = 'other'.
-    // extractSignals must call deriveAdvSegment and produce 'asset_manager'.
+    // extractSignals must call deriveAdvSegment: institutional clients dominate → asset_manager.
     const sigs = extractSignals(firmADV({
       firmName:         'Clearbridge Investments LLC',
       inferred_segment: 'other',  // stale name-heuristic output from backfill
       clientTypes:      ['pooled_investment_vehicles', 'pension_plans', 'institutional', 'individuals'],
       advFlags:         { hasPrivateFundClients: true },
-    }));
+    }), NAME_SIGNALS);
     expect(sigs.segment_inferred.value).toBe('asset_manager');
-    expect(sigs.segment_inferred.confidence).toBe('medium'); // isMixed
+    expect(sigs.segment_inferred.confidence).toBe('medium'); // institutional + mix
   });
 
-  it('uses hasPrivateFundClients when clientTypes is empty (MK Capital backfill regression)', () => {
-    // Backfill sets inferred_segment = inferSegment('MK Capital Company') = 'asset_manager'
-    // (via the \\bcapital\\b name rule). extractSignals must use hasPrivateFundClients=true
-    // and return hedge_fund/medium (flag-only), not asset_manager.
+  it('flag-only (no clientTypes) + neutral name → unknown, NOT a hedge_fund guess (MK Capital)', () => {
+    // hedge_fund must be EARNED. The private-fund flag alone with a neutral name
+    // ('capital' is not a segment signal) resolves to unknown → enrichment queue.
     const sigs = extractSignals(firmADV({
       firmName:         'MK Capital Company',
       inferred_segment: 'asset_manager', // stale name-heuristic output from backfill
       clientTypes:      [],
       advFlags:         { hasPrivateFundClients: true },
-    }));
-    expect(sigs.segment_inferred.value).toBe('hedge_fund');
-    expect(sigs.segment_inferred.confidence).toBe('medium'); // flag-only
+    }), NAME_SIGNALS);
+    expect(sigs.segment_inferred.value).toBe('unknown');
+    expect(sigs.segment_inferred.confidence).toBe('low');
+    expect(sigs.segment_inferred.basis).toBe('adv_flag_only');
   });
 
   it('backfill and live ingest produce identical segments for same inputs', () => {
@@ -231,9 +250,9 @@ describe('extractSignals — ADV segment derived from clientTypes, not cached in
       advFlags:    { hasPrivateFundClients: true },
     };
     // Live ingest: inferred_segment already computed by normalizeFromFirm
-    const liveSigs = extractSignals(firmADV({ ...base, inferred_segment: 'asset_manager' }));
+    const liveSigs = extractSignals(firmADV({ ...base, inferred_segment: 'asset_manager' }), NAME_SIGNALS);
     // Backfill: inferred_segment set to inferSegment(firmName) = 'other' (name heuristic)
-    const backfillSigs = extractSignals(firmADV({ ...base, inferred_segment: 'other' }));
+    const backfillSigs = extractSignals(firmADV({ ...base, inferred_segment: 'other' }), NAME_SIGNALS);
     expect(liveSigs.segment_inferred.value).toBe(backfillSigs.segment_inferred.value);
     expect(liveSigs.segment_inferred.confidence).toBe(backfillSigs.segment_inferred.confidence);
   });
@@ -245,29 +264,29 @@ describe('extractSignals — ADV segment confidence', () => {
       firmName:    'Bluescape Energy Partners LLC', // non-quant name
       clientTypes: ['pension_plans'],
       advFlags:    { hasPrivateFundClients: true },
-    }));
+    }), NAME_SIGNALS);
     expect(sigs.segment_inferred.value).toBe('asset_manager');
     expect(sigs.segment_inferred.confidence).toBe('medium');
     expect(sigs.segment_inferred.basis).toBe('adv_client_type');
   });
 
-  it('pooled vehicles only + hasPrivateFundClients=true → hedge_fund/high', () => {
+  it('pooled vehicles only + hasPrivateFundClients=true → hedge_fund/high (EARNED)', () => {
     const sigs = extractSignals(firmADV({
-      firmName:    'Apex Partners LP', // non-quant name
+      firmName:    'Apex Partners LP', // non-quant, non-veto name
       clientTypes: ['pooled_investment_vehicles'],
       advFlags:    { hasPrivateFundClients: true },
-    }));
+    }), NAME_SIGNALS);
     expect(sigs.segment_inferred.value).toBe('hedge_fund');
     expect(sigs.segment_inferred.confidence).toBe('high');
   });
 
   it('high_net_worth only, no private fund → wealth_manager/high', () => {
-    // firmName='Quant Strategies LLC' is fine here — isQuant=true but no pooled/private
-    // evidence, so the quant rule doesn't fire and retail wins.
+    // firmName 'Quant Strategies LLC' matches the quant name signal, but the
+    // quant refinement only applies in the pooled-dominant branch; retail wins here.
     const sigs = extractSignals(firmADV({
       clientTypes: ['high_net_worth'],
       advFlags:    { hasPrivateFundClients: false },
-    }));
+    }), NAME_SIGNALS);
     expect(sigs.segment_inferred.value).toBe('wealth_manager');
     expect(sigs.segment_inferred.confidence).toBe('high');
   });
@@ -277,19 +296,29 @@ describe('extractSignals — ADV segment confidence', () => {
       firmName:    'Clearbridge Investments LLC', // non-quant name
       clientTypes: ['pooled_investment_vehicles', 'pension_plans', 'institutional'],
       advFlags:    { hasPrivateFundClients: true },
-    }));
+    }), NAME_SIGNALS);
     expect(sigs.segment_inferred.value).toBe('asset_manager');
     expect(sigs.segment_inferred.confidence).toBe('medium');
   });
 
-  it('hasPrivateFundClients=true, no client types → hedge_fund/medium (flag-only)', () => {
+  it('name veto: pooled-dominant + "wealth" name → wealth_manager, NOT hedge_fund', () => {
     const sigs = extractSignals(firmADV({
-      firmName:    'MK Capital Company', // non-quant name; 'capital' only triggers name fallback
+      firmName:    'Everwealth Capital LP',
+      clientTypes: ['pooled_investment_vehicles'],
+      advFlags:    { hasPrivateFundClients: true },
+    }), NAME_SIGNALS);
+    expect(sigs.segment_inferred.value).toBe('wealth_manager');
+    expect(sigs.segment_inferred.basis).toBe('adv_name_veto');
+  });
+
+  it('hasPrivateFundClients=true, no client types + neutral name → unknown/low (flag-only, NOT hedge_fund)', () => {
+    const sigs = extractSignals(firmADV({
+      firmName:    'MK Capital Company', // 'capital' is not a segment signal
       clientTypes: [],
       advFlags:    { hasPrivateFundClients: true },
-    }));
-    expect(sigs.segment_inferred.value).toBe('hedge_fund');
-    expect(sigs.segment_inferred.confidence).toBe('medium');
+    }), NAME_SIGNALS);
+    expect(sigs.segment_inferred.value).toBe('unknown');
+    expect(sigs.segment_inferred.confidence).toBe('low');
   });
 });
 
@@ -519,7 +548,7 @@ describe('multi-source best-available-per-dimension', () => {
       inferred_segment: 'quant_fund',
       clientTypes: ['pooled_investment_vehicles'],
       advFlags: { hasPrivateFundClients: true },
-    }));
+    }), NAME_SIGNALS);
 
     // Simulate accumulation: start with 13F, merge ADV on top
     const merged = { ...signals13F };

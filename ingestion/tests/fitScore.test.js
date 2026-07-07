@@ -181,3 +181,86 @@ describe('computeFitScore', () => {
     ].sort());
   });
 });
+
+// ── Segment abstention (unknown / other) ────────────────────────────────────────
+//
+// For an unclassified segment the filer_type criterion ABSTAINS: it is removed
+// from the sum AND the weight denominator, and the remaining criteria are
+// renormalized to 100. This is a true neutral — not a fixed 0.5 filler, not a
+// cap-at-90, not a downward prior. The firm is scored purely on other signals.
+
+describe('computeFitScore — segment abstention', () => {
+  it("'unknown' abstains: filer_type contributes 0 and is renormalized out", async () => {
+    const { score, breakdown } = await computeFitScore(prospect({
+      estimated_aum_usd:      2_000_000_000, // 1.0 → 20
+      portfolio_turnover_pct: null,          // 0.5 → 13
+      equities_pct:           0,             // 0.25 → 4
+      options_present:        false,         // 0
+      position_count:         0,             // 0.25 → 1
+      inferred_segment:       'unknown',
+    }));
+    expect(breakdown.filer_type.abstained).toBe(true);
+    expect(breakdown.filer_type.points).toBe(0);
+    // remaining points = 20+13+4+0+1+0+0 = 38 over weight 90 → 38/90*100 = 42
+    expect(score).toBe(42);
+    // filer_type still present in the breakdown (transparency), just abstained
+    expect(Object.keys(breakdown)).toContain('filer_type');
+  });
+
+  it("'other' abstains identically to 'unknown' (same inputs → same score)", async () => {
+    const inputs = {
+      estimated_aum_usd:      2_000_000_000,
+      portfolio_turnover_pct: null,
+      equities_pct:           0,
+      position_count:         0,
+    };
+    const unknown = await computeFitScore(prospect({ ...inputs, inferred_segment: 'unknown' }));
+    const other   = await computeFitScore(prospect({ ...inputs, inferred_segment: 'other' }));
+    expect(other.score).toBe(unknown.score);
+    expect(other.breakdown.filer_type.abstained).toBe(true);
+  });
+
+  it('renormalization is not a downward prior — a data-rich unknown can still reach 100', async () => {
+    const { score } = await computeFitScore(prospect({
+      estimated_aum_usd:      1_000_000_000, // 1.0 → 20
+      portfolio_turnover_pct: 75,            // 1.0 → 25
+      equities_pct:           90,            // 1.0 → 15
+      options_present:        true,          // 1.0 → 15
+      position_count:         200,           // 1.0 → 5
+      inferred_segment:       'unknown',
+      clientTypes:            ['pooled_investment_vehicles'], // 1.0 → 5
+      advFlags:               { hasPrivateFundClients: true }, // 1.0 → 5
+    }));
+    // remaining points = 90 over weight 90 → 100 (segment neither helped nor hurt)
+    expect(score).toBe(100);
+  });
+
+  it('a thin unknown scores low (renormalized), reflecting weak other signals', async () => {
+    const { score } = await computeFitScore(prospect({
+      estimated_aum_usd:      5_000_000, // 0.25 → 5
+      portfolio_turnover_pct: 5,         // 0.25 → 6
+      equities_pct:           10,        // 0.25 → 4
+      options_present:        false,     // 0
+      position_count:         5,         // 0.25 → 1
+      inferred_segment:       'unknown',
+    }));
+    // remaining points = 5+6+4+0+1+0+0 = 16 over weight 90 → 16/90*100 = 18
+    expect(score).toBe(18);
+  });
+
+  it('a classified segment is unchanged (no renormalization when nothing abstains)', async () => {
+    // Same non-segment signals as the first abstention test, but segment = broker_dealer
+    // (0.5 → 5 pts). Weights sum to 100, so score = plain points sum = 38 + 5 = 43.
+    const { score, breakdown } = await computeFitScore(prospect({
+      estimated_aum_usd:      2_000_000_000,
+      portfolio_turnover_pct: null,
+      equities_pct:           0,
+      options_present:        false,
+      position_count:         0,
+      inferred_segment:       'broker_dealer',
+    }));
+    expect(breakdown.filer_type.abstained).toBeUndefined();
+    expect(breakdown.filer_type.points).toBe(5);
+    expect(score).toBe(43);
+  });
+});

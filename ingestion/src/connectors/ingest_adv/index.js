@@ -115,8 +115,11 @@ export function normalizeFromFirm(firm) {
   const hasPrivateFundClients = item7A != null && item7A !== '' && typeof item7A === 'object';
 
   // ── Inferred segment — see deriveAdvSegment() in computeSignals.js for rules.
-  // Confidence is computed in extractSignals (normalize.js).
-  const inferred_segment = deriveAdvSegment(firmName, clientTypes, hasPrivateFundClients);
+  // This is a composition-only best-effort (no name-signal config here) used for
+  // the discover-phase filerTypes filter and the initial column. The AUTHORITATIVE
+  // segment (segment_canonical) is recomputed in normalizeFirm with the full
+  // name-signal config. Confidence is set in extractSignals (normalize.js).
+  const { value: inferred_segment } = deriveAdvSegment(firmName, clientTypes, hasPrivateFundClients);
 
   return {
     firmName,

@@ -65,12 +65,22 @@ export async function computeFitScore(prospect) {
   const cntRatio = cnt >= 100 ? 1.0 : cnt >= 50 ? 0.5 : 0.25;
   bd.position_count = { weight: w.position_count ?? 5, ratio: cntRatio, points: Math.round((w.position_count ?? 5) * cntRatio) };
 
-  // filer_type (weight reduced from 15→10 after migration 016)
-  const seg      = prospect.inferred_segment ?? '';
-  const segRatio = ['hedge_fund', 'quant_fund', 'prop_trader'].includes(seg) ? 1.0
-                 : seg === 'pension' ? 0.25
-                 : 0.5;
-  bd.filer_type = { weight: w.filer_type ?? 10, ratio: segRatio, points: Math.round((w.filer_type ?? 10) * segRatio) };
+  // filer_type (weight reduced from 15→10 after migration 016).
+  // ABSTENTION: for an unclassified segment ('unknown' or 'other') the segment
+  // prior contributes NOTHING — it is removed from the criteria sum and the
+  // remaining criteria are renormalized to 100 (see below). This is a true
+  // abstain, not a fixed 0.5 filler and not a downward prior: the firm is
+  // scored purely on its other signals.
+  const seg     = prospect.inferred_segment ?? '';
+  const filerW  = w.filer_type ?? 10;
+  if (seg === 'unknown' || seg === 'other') {
+    bd.filer_type = { weight: filerW, ratio: null, points: 0, abstained: true };
+  } else {
+    const segRatio = ['hedge_fund', 'quant_fund', 'prop_trading', 'prop_trader'].includes(seg) ? 1.0
+                   : seg === 'pension' ? 0.25
+                   : 0.5;
+    bd.filer_type = { weight: filerW, ratio: segRatio, points: Math.round(filerW * segRatio) };
+  }
 
   // client_type_fit — ADV: pooled/institutional full, HNW partial, retail/absent zero
   // 13F prospects have no clientTypes → gracefully scores 0
@@ -86,6 +96,14 @@ export async function computeFitScore(prospect) {
   const pfRatio = prospect.advFlags?.hasPrivateFundClients ? 1.0 : 0;
   bd.private_fund_adviser = { weight: w.private_fund_adviser ?? 5, ratio: pfRatio, points: Math.round((w.private_fund_adviser ?? 5) * pfRatio) };
 
-  const score = Math.min(100, Object.values(bd).reduce((s, b) => s + b.points, 0));
+  // Renormalize over the criteria that actually scored: an abstained criterion
+  // (segment for unknown/other) is excluded from BOTH the points sum and the
+  // weight denominator, so the score is the firm's percentage on the remaining
+  // criteria. When nothing abstains, totalWeight = 100 and this reduces to the
+  // plain points sum (behavior unchanged for classified firms).
+  const scored      = Object.values(bd).filter(b => !b.abstained);
+  const totalWeight = scored.reduce((s, b) => s + b.weight, 0);
+  const rawPoints   = scored.reduce((s, b) => s + b.points, 0);
+  const score       = totalWeight > 0 ? Math.min(100, Math.round((rawPoints / totalWeight) * 100)) : 0;
   return { score, breakdown: bd };
 }
