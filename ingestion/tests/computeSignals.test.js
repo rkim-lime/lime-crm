@@ -393,11 +393,21 @@ describe('deriveAdvSegment — name veto blocks hedge_fund', () => {
 });
 
 describe('deriveAdvSegment — empty clientTypes (unknown unless earned)', () => {
-  it('Argent: flag-only + neutral name → unknown (was hedge_fund)', () => {
-    const r = deriveAdvSegment('Argent Group LLC', [], true, NAME_SIGNALS);
+  it('flag-only + neutral name → unknown (the generic "was hedge_fund" case)', () => {
+    const r = deriveAdvSegment('Bedrock Group LLC', [], true, NAME_SIGNALS);
     expect(r.value).toBe('unknown');
     expect(r.confidence).toBe('low');
     expect(r.basis).toBe('adv_flag_only');
+  });
+
+  it('Argent Retirement Plan Advisors → wealth_manager/low (retirement name rule; anchor)', () => {
+    // Real firm: 'ARGENT RETIREMENT PLAN ADVISORS, LLC', flag-only, empty clientTypes.
+    // The kept retirement→wealth_manager name rule classifies it (a legitimate
+    // positive classification, NOT a hedge_fund guess). Anchor: wealth_manager/low.
+    const r = deriveAdvSegment('ARGENT RETIREMENT PLAN ADVISORS, LLC', [], true, NAME_SIGNALS);
+    expect(r.value).toBe('wealth_manager');
+    expect(r.confidence).toBe('low');
+    expect(r.basis).toBe('adv_name_signal');
   });
 
   it('iCapital: flag-only + neutral name (generic "capital") → unknown', () => {

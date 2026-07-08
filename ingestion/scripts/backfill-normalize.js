@@ -235,7 +235,8 @@ async function main() {
   logger.info(
     `Refs loaded — ${normRefs.signalDefs.length} signal defs, `
     + `${normRefs.segmentMappings.length} segment mappings, `
-    + `${normRefs.sizeBands.length} size bands`
+    + `${normRefs.sizeBands.length} size bands, `
+    + `${normRefs.nameSignals.length} name signals`
   );
 
   const pResult = await backfillProspects(normRefs);
