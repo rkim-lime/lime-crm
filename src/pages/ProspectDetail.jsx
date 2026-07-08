@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import RoleGate from '../components/RoleGate';
 import ConfirmModal from '../components/ConfirmModal';
-import { useProspect, useUpdateProspect, useConvertProspectToAccount, useSourceRegistry, useSegmentTaxonomy } from '../hooks/useProspects';
+import { useProspect, useUpdateProspect, useConvertProspectToAccount, useSourceRegistry, useSegmentTaxonomy, useSetRelevanceOverride, effectiveRelevance } from '../hooks/useProspects';
 import { useProfiles } from '../hooks/useDashboard';
-import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource, fmtSegment } from './shared';
+import { ErrorBanner, fmtDate, fmtRelTime, fmtProspectSource, fmtSegment, RelevanceBadge, RelevanceFlags, fmtServedFraction } from './shared';
 
 const STATUS_OPTS = [
   { value: 'uncontacted',  label: 'Uncontacted' },
@@ -125,6 +125,74 @@ function Panel({ title, children, style }) {
       )}
       {children}
     </div>
+  );
+}
+
+const RELEVANCE_OVERRIDE_OPTS = [
+  { value: '', label: 'Auto (no override)' },
+  { value: 'relevant', label: 'Relevant' },
+  { value: 'likely_relevant', label: 'Likely Relevant' },
+  { value: 'suspect', label: 'Suspect' },
+  { value: 'irrelevant', label: 'Irrelevant' },
+  { value: 'unknown', label: 'Unknown' },
+];
+
+// Asset-class relevance explainability + reversible override control.
+function RelevancePanel({ p }) {
+  const setOverride = useSetRelevanceOverride();
+  const eff = effectiveRelevance(p);
+  const breakdown = p.asset_class_breakdown ?? null;
+  const buckets = breakdown
+    ? Object.entries(breakdown).sort((a, b) => (b[1]?.value ?? 0) - (a[1]?.value ?? 0))
+    : [];
+
+  return (
+    <Panel title="Asset-Class Relevance">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+        <RelevanceBadge verdict={eff} overridden={!!p.asset_class_relevance_override} />
+        <RelevanceFlags flags={p.asset_class_flags} />
+        <span style={{ flex: 1 }} />
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          served <strong>{fmtServedFraction(p.asset_class_served_fraction)}</strong>
+        </span>
+      </div>
+
+      {buckets.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          {buckets.map(([bucket, v]) => (
+            <div key={bucket} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, marginBottom: 3 }}>
+              <span style={{ width: 74, color: 'var(--text-secondary)', textTransform: 'capitalize' }}>
+                {bucket.replace('_', ' ')}
+              </span>
+              <div style={{ flex: 1, height: 5, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round((v?.fraction ?? 0) * 100)}%`, background: 'var(--accent)' }} />
+              </div>
+              <span style={{ width: 46, textAlign: 'right', color: 'var(--text-tertiary)' }}>
+                {v?.fraction != null ? `${(v.fraction * 100).toFixed(1)}%` : '—'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <label style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>Override</label>
+        <select
+          className="filter-select"
+          value={p.asset_class_relevance_override ?? ''}
+          disabled={setOverride.isPending}
+          onChange={e => setOverride.mutate({ id: p.id, override: e.target.value || null })}
+          style={{ fontSize: 12 }}
+        >
+          {RELEVANCE_OVERRIDE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {p.asset_class_relevance_override && (
+          <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+            auto: {p.asset_class_relevance ?? '—'}
+          </span>
+        )}
+      </div>
+    </Panel>
   );
 }
 
@@ -268,6 +336,9 @@ export default function ProspectDetail() {
             {/* Score breakdown from latest run */}
             <ScoreBreakdown breakdown={latestScore?.breakdown} />
           </Panel>
+
+          {/* Asset-class relevance (eligibility) */}
+          <RelevancePanel p={p} />
 
           {/* Filings */}
           <Panel title={`13F Filings (${filings.length})`}>

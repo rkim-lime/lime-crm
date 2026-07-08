@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/Layout';
-import { useProspects, useSourceRegistry, useSegmentTaxonomy } from '../hooks/useProspects';
+import { useProspects, useSourceRegistry, useSegmentTaxonomy, useRelevanceActions, useRelevanceConfig, effectiveRelevance, displayPriority } from '../hooks/useProspects';
 import { useDedupQueueCount } from '../hooks/useDedup';
 import { useProfiles } from '../hooks/useDashboard';
-import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource, fmtSegment } from './shared';
+import { TableSkeleton, ErrorBanner, fmtRelTime, fmtProspectSource, fmtSegment, RelevanceBadge, RelevanceFlags, isGated } from './shared';
 
 const STATUS_OPTS = [
   { value: '',             label: 'All Statuses' },
@@ -137,8 +137,12 @@ export default function Prospects() {
   const [search,         setSearch]   = useState('');
   const [icpOnly,        setIcpOnly]  = useState(true);
 
+  const [showGated,      setShowGated] = useState(false);
+
   const { data: registry = [] } = useSourceRegistry();
   const { data: segmentValues = [] } = useSegmentTaxonomy();
+  const { data: verdictActions = [] } = useRelevanceActions();
+  const { data: relevanceConfig = {} } = useRelevanceConfig();
 
   const toggleSegment = (key) =>
     setSegments(prev => prev.includes(key) ? prev.filter(s => s !== key) : [...prev, key]);
@@ -181,6 +185,15 @@ export default function Prospects() {
   const allProspects = useProspects({ ...baseFilters, icpOnly: false });
   const { data: dedupCount = 0 } = useDedupQueueCount();
   const profiles = useProfiles();
+
+  // Eligibility gate (config-driven, reversible): hide confidently-gated firms
+  // (effective verdict action = 'gate') unless "Show gated" is on. Then rank by
+  // display priority = fit_score minus the soft suspect penalty (config).
+  const gatedCount = (data ?? []).filter(p => isGated(p, verdictActions)).length;
+  const suspectPenalty = relevanceConfig.suspect_penalty ?? 0;
+  const rows = (showGated ? (data ?? []) : (data ?? []).filter(p => !isGated(p, verdictActions)))
+    .slice()
+    .sort((a, b) => displayPriority(b, verdictActions, suspectPenalty) - displayPriority(a, verdictActions, suspectPenalty));
 
   return (
     <Layout title="Prospects">
@@ -234,6 +247,15 @@ export default function Prospects() {
           ICP only <span style={{ color: 'var(--text-tertiary)', fontSize: 11 }}>ⓘ</span>
         </label>
 
+        {/* Asset-class gate toggle (reversible eligibility gate) */}
+        <label
+          title="Firms with a confidently-irrelevant book (e.g. debt-dominant) are gated out of the working view. Toggle to review them; override on the detail page to un-gate."
+          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12.5, color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}
+        >
+          <input type="checkbox" checked={showGated} onChange={e => setShowGated(e.target.checked)} />
+          Show gated{gatedCount > 0 ? ` (${gatedCount})` : ''}
+        </label>
+
         <span style={{ flex: 1 }} />
 
         {/* Dedup link */}
@@ -249,12 +271,10 @@ export default function Prospects() {
 
         {/* Count display */}
         <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', alignSelf: 'center', whiteSpace: 'nowrap' }}>
-          {data && allProspects.data
-            ? icpOnly
-              ? `${data.length} of ${allProspects.data.length} prospects`
-              : `${data.length} prospect${data.length !== 1 ? 's' : ''}`
-            : data
-            ? `${data.length} prospect${data.length !== 1 ? 's' : ''}`
+          {data
+            ? `${rows.length} prospect${rows.length !== 1 ? 's' : ''}`
+              + (icpOnly && allProspects.data ? ` of ${allProspects.data.length}` : '')
+              + (!showGated && gatedCount > 0 ? ` · ${gatedCount} gated` : '')
             : ''}
         </span>
       </div>
@@ -262,7 +282,7 @@ export default function Prospects() {
       {error && <ErrorBanner message={error.message} onRetry={refetch} />}
 
       {isLoading ? (
-        <TableSkeleton cols={8} rows={8} />
+        <TableSkeleton cols={10} rows={8} />
       ) : (
         <div className="table-wrap">
           <table>
@@ -272,6 +292,7 @@ export default function Prospects() {
                 <th>Status</th>
                 <th>Source</th>
                 <th>Segment</th>
+                <th>Relevance</th>
                 <th>AUM</th>
                 <th>Positions</th>
                 <th>Fit Score</th>
@@ -280,7 +301,7 @@ export default function Prospects() {
               </tr>
             </thead>
             <tbody>
-              {(data ?? []).map(p => (
+              {rows.map(p => (
                 <tr key={p.id} onClick={() => navigate(`/prospects/${p.id}`)}>
                   <td>
                     <div className="table-name">{p.firm_name}</div>
@@ -312,6 +333,15 @@ export default function Prospects() {
                   <td style={{ fontSize: 12.5 }}>
                     {fmtSegment(p.segment_canonical, segmentValues)}
                   </td>
+                  <td style={{ fontSize: 12.5 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+                      <RelevanceBadge
+                        verdict={effectiveRelevance(p)}
+                        overridden={!!p.asset_class_relevance_override}
+                      />
+                      <RelevanceFlags flags={p.asset_class_flags} />
+                    </div>
+                  </td>
                   <td style={{ fontSize: 12.5, fontWeight: 500 }}>{fmtAUM(p.estimated_aum_usd)}</td>
                   <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
                     {p.position_count ?? '—'}
@@ -325,7 +355,7 @@ export default function Prospects() {
               ))}
               {!isLoading && (data ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
+                  <td colSpan={10} style={{ textAlign: 'center', padding: '28px 16px', color: 'var(--text-tertiary)', fontSize: 13 }}>
                     No prospects found
                   </td>
                 </tr>

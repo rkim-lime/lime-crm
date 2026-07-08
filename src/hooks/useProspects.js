@@ -9,6 +9,8 @@ const FIELDS = `
   estimated_aum_usd, position_count, portfolio_turnover_pct,
   equities_pct, options_present, inferred_segment, segment_canonical,
   fit_score, fit_score_computed_at, passes_icp, is_audit_only,
+  asset_class_relevance, asset_class_relevance_override,
+  asset_class_served_fraction, asset_class_breakdown, asset_class_flags,
   notes, created_at, updated_at,
   assigned_to,
   assignee:assigned_to(id, full_name, email, avatar_url)
@@ -55,6 +57,79 @@ export function useSegmentTaxonomy() {
       }));
     },
     staleTime: 10 * 60 * 1000,
+  });
+}
+
+// Loads relevance_verdict_actions (verdict → gate/penalize/pass) so the gate is
+// config-driven in the UI — never a hardcoded list of gating verdicts.
+export function useRelevanceActions() {
+  return useQuery({
+    queryKey: ['relevance-verdict-actions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('relevance_verdict_actions')
+        .select('verdict, action');
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+// Single-row relevance knobs (suspect_penalty, thresholds). Config-driven — the
+// UI reads suspect_penalty from here rather than hardcoding a magnitude.
+export function useRelevanceConfig() {
+  return useQuery({
+    queryKey: ['asset-class-relevance-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('asset_class_relevance_config')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+      if (error) throw error;
+      return data ?? {};
+    },
+    staleTime: 10 * 60 * 1000,
+  });
+}
+
+// Effective verdict = human override (if set) else the auto verdict.
+export function effectiveRelevance(p) {
+  return p?.asset_class_relevance_override ?? p?.asset_class_relevance ?? null;
+}
+
+// Display priority = intrinsic fit_score minus the soft suspect penalty (config)
+// for firms whose effective verdict's action is 'penalize'. fit_score itself is
+// never mutated — asset-class stays separate from the fit score.
+export function displayPriority(p, verdictActions = [], suspectPenalty = 0) {
+  const base = p?.fit_score ?? 0;
+  const eff = effectiveRelevance(p);
+  const action = verdictActions.find(v => v.verdict === eff)?.action;
+  return action === 'penalize' ? base - suspectPenalty : base;
+}
+
+// Human override of the asset-class verdict — the reversible gate control.
+// Pass override=null to clear (revert to the auto verdict).
+export function useSetRelevanceOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, override }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { error } = await supabase
+        .from('prospects')
+        .update({
+          asset_class_relevance_override: override,
+          asset_class_override_by: override ? (user?.id ?? null) : null,
+          asset_class_override_at: override ? new Date().toISOString() : null,
+        })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: (_, { id }) => {
+      qc.invalidateQueries({ queryKey: ['prospects'] });
+      qc.invalidateQueries({ queryKey: ['prospect', id] });
+    },
   });
 }
 

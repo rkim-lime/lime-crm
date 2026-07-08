@@ -22,6 +22,59 @@ export function fmtSegment(key, segmentValues = []) {
   return String(key).replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
+// ── Asset-class relevance ─────────────────────────────────────────────────────
+const RELEVANCE_META = {
+  relevant:        { label: 'Relevant',        color: 'var(--green)',          bg: 'rgba(34,197,94,0.12)' },
+  likely_relevant: { label: 'Likely Relevant', color: 'var(--accent)',         bg: 'rgba(59,130,246,0.12)' },
+  suspect:         { label: 'Suspect',         color: '#d97706',               bg: '#fffbeb' },
+  irrelevant:      { label: 'Irrelevant',      color: 'var(--red)',            bg: 'rgba(239,68,68,0.12)' },
+  unknown:         { label: 'Unknown',         color: 'var(--text-tertiary)',  bg: 'var(--bg-tertiary)' },
+};
+
+export function RelevanceBadge({ verdict, overridden = false }) {
+  if (!verdict) return <span style={{ color: 'var(--text-tertiary)' }}>—</span>;
+  const m = RELEVANCE_META[verdict] ?? { label: verdict, color: 'var(--text-secondary)', bg: 'var(--bg-tertiary)' };
+  return (
+    <span
+      title={overridden ? 'Human override' : undefined}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 8px', borderRadius: 20,
+        fontSize: 11.5, fontWeight: 600, color: m.color, background: m.bg, whiteSpace: 'nowrap',
+      }}
+    >
+      {m.label}{overridden ? ' ✎' : ''}
+    </span>
+  );
+}
+
+export function RelevanceFlags({ flags }) {
+  if (!flags) return null;
+  const pills = [];
+  if (flags.possible_hft) pills.push(['🎯 possible HFT', '#7c3aed', 'Large AUM but tiny/empty 13F — prioritize enrichment']);
+  if (flags.review)       pills.push(['⚠ review', '#d97706', flags.adv_name_flag ? `name flag: ${flags.adv_name_flag}` : 'review']);
+  if (!pills.length) return null;
+  return (
+    <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap' }}>
+      {pills.map(([txt, color, title]) => (
+        <span key={txt} title={title} style={{ fontSize: 10.5, fontWeight: 700, color, whiteSpace: 'nowrap' }}>{txt}</span>
+      ))}
+    </span>
+  );
+}
+
+export function fmtServedFraction(f) {
+  if (f == null) return '—';
+  return `${(f * 100).toFixed(1)}%`;
+}
+
+// Is this prospect gated? effective verdict's action === 'gate' (config-driven).
+export function isGated(prospect, verdictActions = []) {
+  const eff = prospect?.asset_class_relevance_override ?? prospect?.asset_class_relevance;
+  if (!eff) return false;
+  const row = verdictActions.find(v => v.verdict === eff);
+  return row?.action === 'gate';
+}
+
 export function TierBadge({ tier }) {
   if (!tier) return null;
   return <span className={`badge badge-tier-${tier}`}>{tier}</span>;

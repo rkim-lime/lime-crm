@@ -7,6 +7,7 @@
  */
 
 import { inferSegment, deriveAdvSegment } from './computeSignals.js';
+import { computeAssetClassForProspect } from './assetClass.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -321,18 +322,67 @@ async function loadNameSignals(supabase) {
   return data ?? [];
 }
 
+// ── Asset-class relevance config (migration 026) ──────────────────────────────
+async function loadAssetPatterns(supabase) {
+  const { data } = await supabase
+    .from('asset_class_patterns')
+    .select('pattern, bucket, pattern_kind, sort_order, is_active')
+    .eq('is_active', true)
+    .order('sort_order');
+  return data ?? [];
+}
+async function loadServedBuckets(supabase) {
+  const { data } = await supabase
+    .from('served_asset_classes')
+    .select('bucket_key, served, sort_order');
+  return data ?? [];
+}
+async function loadAdvNameFlags(supabase) {
+  const { data } = await supabase
+    .from('relevance_adv_name_flags')
+    .select('pattern, implied_class, verdict, confidence, sort_order, is_active')
+    .eq('is_active', true)
+    .order('sort_order');
+  return data ?? [];
+}
+async function loadRelevanceConfig(supabase) {
+  const { data } = await supabase
+    .from('asset_class_relevance_config')
+    .select('*')
+    .eq('id', 1)
+    .maybeSingle();
+  return data ?? {};
+}
+async function loadVerdictActions(supabase) {
+  const { data } = await supabase
+    .from('relevance_verdict_actions')
+    .select('verdict, action');
+  return data ?? [];
+}
+
 /**
  * Load all reference tables needed for normalization.
  * Call once per connector run; pass the result as `refs` to normalizeFirm.
  */
 export async function loadNormalizationRefs(supabase) {
-  const [signalDefs, segmentMappings, sizeBands, nameSignals] = await Promise.all([
+  const [
+    signalDefs, segmentMappings, sizeBands, nameSignals,
+    assetPatterns, servedBuckets, advNameFlags, relevanceConfig, verdictActions,
+  ] = await Promise.all([
     loadSignalDefs(supabase),
     loadSegmentMappings(supabase),
     loadSizeBands(supabase),
     loadNameSignals(supabase),
+    loadAssetPatterns(supabase),
+    loadServedBuckets(supabase),
+    loadAdvNameFlags(supabase),
+    loadRelevanceConfig(supabase),
+    loadVerdictActions(supabase),
   ]);
-  return { signalDefs, segmentMappings, sizeBands, nameSignals };
+  return {
+    signalDefs, segmentMappings, sizeBands, nameSignals,
+    assetPatterns, servedBuckets, advNameFlags, relevanceConfig, verdictActions,
+  };
 }
 
 async function loadExistingNormalized(supabase, { prospectId, accountId }) {
@@ -410,8 +460,8 @@ export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
   const { supabase, logger } = ctx;
   const { prospectId = null, accountId = null } = entityRef;
 
-  const { signalDefs, segmentMappings, sizeBands, nameSignals } =
-    refs ?? await loadNormalizationRefs(supabase);
+  const refsObj = refs ?? await loadNormalizationRefs(supabase);
+  const { signalDefs, segmentMappings, sizeBands, nameSignals } = refsObj;
 
   // ── 1. Extract signals from this connector run ─────────────────────────────
   const currentSignals = extractSignals(firmSignal, nameSignals);
@@ -447,6 +497,19 @@ export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
     normalized_at:       new Date().toISOString(),
   };
   if (jurisdiction != null) patch.jurisdiction = jurisdiction;
+
+  // ── 4b. Asset-class relevance (eligibility layer) ──────────────────────────
+  // Reads this prospect's filings/holdings, persists per-filing breakdowns
+  // (time-series), and derives the firm verdict. Config-driven (refs). The auto
+  // verdict is written here; the human override column is left untouched.
+  if (prospectId) {
+    try {
+      const acPatch = await computeAssetClassForProspect({ supabase, logger }, prospectId, firmSignal, refsObj);
+      Object.assign(patch, acPatch);
+    } catch (err) {
+      logger?.warn(`normalizeFirm — asset-class ${prospectId}: ${err.message}`);
+    }
+  }
 
   // ── 5. Persist to DB ───────────────────────────────────────────────────────
   if (accountId) {
