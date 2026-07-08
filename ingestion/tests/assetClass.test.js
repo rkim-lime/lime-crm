@@ -38,6 +38,7 @@ const CONFIG = {
   no_signal_adv_default: 'likely_relevant',
   relevant_min_fraction: 0.80, likely_min_fraction: 0.50, irrelevant_max_fraction: 0.20,
   suspect_penalty: 15, possible_hft_min_aum: 1_000_000_000,
+  possible_hft_requires_13f_filer: true,
 };
 const VERDICT_ACTIONS = [
   { verdict: 'relevant', action: 'pass' }, { verdict: 'likely_relevant', action: 'pass' },
@@ -166,11 +167,24 @@ describe('deriveAdvRelevance / matchAdvNameFlags', () => {
 
 // ── possible_hft + verdictAction ──────────────────────────────────────────────
 describe('computePossibleHft', () => {
-  it('fires: large AUM + tiny book', () => expect(computePossibleHft({ aum: 5e9, holdingCount: 2, config: CONFIG })).toBe(true));
-  it('no fire: enough holdings', () => expect(computePossibleHft({ aum: 5e9, holdingCount: 50, config: CONFIG })).toBe(false));
-  it('no fire: AUM below threshold', () => expect(computePossibleHft({ aum: 1e8, holdingCount: 0, config: CONFIG })).toBe(false));
+  it('fires: 13F filer with large AUM + tiny book', () =>
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 2, has13fFiling: true, config: CONFIG })).toBe(true));
+  it('no fire: enough holdings', () =>
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 50, has13fFiling: true, config: CONFIG })).toBe(false));
+  it('no fire: AUM below threshold', () =>
+    expect(computePossibleHft({ aum: 1e8, holdingCount: 0, has13fFiling: true, config: CONFIG })).toBe(false));
+
+  it('requires 13F filer (default): ADV-only large firm with NO 13F → does NOT fire', () => {
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 0, has13fFiling: false, config: CONFIG })).toBe(false);
+  });
+  it('13F filer with a tiny book → fires (the genuine mismatch)', () => {
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 3, has13fFiling: true, config: CONFIG })).toBe(true);
+  });
+  it('config-driven: knob=false restores AUM+holdings-only (fires without 13F)', () => {
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 0, has13fFiling: false, config: { ...CONFIG, possible_hft_requires_13f_filer: false } })).toBe(true);
+  });
   it('config-driven: raising possible_hft_min_aum suppresses it', () => {
-    expect(computePossibleHft({ aum: 5e9, holdingCount: 2, config: { ...CONFIG, possible_hft_min_aum: 1e11 } })).toBe(false);
+    expect(computePossibleHft({ aum: 5e9, holdingCount: 2, has13fFiling: true, config: { ...CONFIG, possible_hft_min_aum: 1e11 } })).toBe(false);
   });
 });
 

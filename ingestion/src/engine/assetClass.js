@@ -153,11 +153,23 @@ export function deriveAdvRelevance(firmName, nameFlags, config) {
   return { verdict: config?.no_signal_adv_default ?? 'likely_relevant', confidence: 'low', flags: {} };
 }
 
-/** Positive-lead trigger: AUM ≥ possible_hft_min_aum AND holdings < min_holdings. */
-export function computePossibleHft({ aum, holdingCount, config }) {
+/**
+ * Positive-lead trigger: AUM ≥ possible_hft_min_aum AND a tiny book
+ * (holdings < min_holdings). When possible_hft_requires_13f_filer is true
+ * (default), the firm must ALSO be a 13F filer (has13fFiling) — an adviser with
+ * no 13F at all is expected (private-fund/sub-threshold/non-US), not a flat-
+ * overnight mismatch. Set the knob false to restore AUM+holdings-only behavior.
+ */
+export function computePossibleHft({ aum, holdingCount, has13fFiling = false, config }) {
   const minAum      = config?.possible_hft_min_aum ?? 1_000_000_000;
   const minHoldings = config?.min_holdings ?? 10;
-  return (aum != null && aum >= minAum) && (!holdingCount || holdingCount < minHoldings);
+  const requires13f = config?.possible_hft_requires_13f_filer ?? true;
+
+  const aumOk = aum != null && aum >= minAum;
+  const tiny  = !holdingCount || holdingCount < minHoldings;
+  if (!aumOk || !tiny) return false;
+  if (requires13f && !has13fFiling) return false;
+  return true;
 }
 
 /** Resolve a verdict to its configured action (gate/penalize/pass) from relevance_verdict_actions. */
@@ -289,9 +301,12 @@ export async function computeAssetClassForProspect(ctx, prospectId, firmSignal, 
     result = deriveAdvRelevance(firmSignal?.firmName, advNameFlags, config);
   }
 
-  // possible_hft positive lead (config-driven mismatch)
+  // possible_hft positive lead (config-driven mismatch). has13fFiling gates out
+  // ADV-only advisers with no 13F when possible_hft_requires_13f_filer is true.
   const flags = { ...(result.flags ?? {}) };
-  if (computePossibleHft({ aum, holdingCount: latestHoldingCount, config })) flags.possible_hft = true;
+  if (computePossibleHft({ aum, holdingCount: latestHoldingCount, has13fFiling: filingList.length > 0, config })) {
+    flags.possible_hft = true;
+  }
   if (result.verdict === 'suspect') flags.review = true;
 
   return {
