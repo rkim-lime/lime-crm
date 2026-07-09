@@ -208,11 +208,15 @@ describe('inferSegment', () => {
     ['Capital Partners',                   'asset_manager'],  // 'partners' + 'capital'
     ['Blue Ridge Capital',                 'asset_manager'],  // 'capital' token
 
-    // No reliable signal → other (honest fallback, no longer defaults to hedge_fund)
-    ['Sanders Morris Harris',              'other'],
-    ['Acme Investments',                   'other'],  // 'investments' alone not a signal
-    ['',                                   'other'],
-    [null,                                 'other'],
+    // No reliable signal → UNKNOWN (could-not-classify → enrichment queue),
+    // NOT 'other' ('other' is reserved for manual/enrichment classification).
+    ['Sanders Morris Harris',              'unknown'],
+    ['Navalign, LLC',                      'unknown'],  // no reliable token
+    ['Acme Investments',                   'unknown'],  // 'investments' alone not a signal
+    ['',                                   'unknown'],
+    [null,                                 'unknown'],
+    // A genuine token still wins over the fallback (no regression):
+    ['Point72 Asset Management, L.P.',     'asset_manager'], // 'asset management' token
   ])('%s → %s', (name, expected) => {
     expect(inferSegment(name)).toBe(expected);
   });
@@ -220,7 +224,7 @@ describe('inferSegment', () => {
   it('all return values are valid canonical segment keys', () => {
     const VALID = new Set([
       'quant_fund','prop_trader','wealth_manager','bank','broker_dealer',
-      'pension','insurance','family_office','hedge_fund','asset_manager','other',
+      'pension','insurance','family_office','hedge_fund','asset_manager','unknown','other',
     ]);
     const samples = [
       'Quantitative Research LLC', 'Prop Trading Inc', 'Wealth Group',

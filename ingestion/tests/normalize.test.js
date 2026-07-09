@@ -159,12 +159,12 @@ describe('extractSignals — 13F', () => {
     expect(sigs.segment_inferred.confidence).toBe('low');
   });
 
-  it('re-derives segment from firmName for Sanders Morris Harris → other', () => {
+  it('re-derives segment from firmName for Sanders Morris Harris → unknown (name-miss → enrichment queue)', () => {
     const sigs = extractSignals(firm13F({
       firmName:         'SANDERS MORRIS HARRIS',
       inferred_segment: 'hedge_fund',  // stale
     }));
-    expect(sigs.segment_inferred.value).toBe('other');
+    expect(sigs.segment_inferred.value).toBe('unknown');
   });
 });
 
@@ -217,7 +217,7 @@ describe('extractSignals — ADV', () => {
 
 describe('extractSignals — ADV segment derived from clientTypes, not cached inferred_segment', () => {
   it('ignores stale inferred_segment; recomputes from clientTypes (Clearbridge backfill regression)', () => {
-    // Backfill sets inferred_segment = inferSegment('Clearbridge Investments LLC') = 'other'.
+    // Backfill sets inferred_segment = inferSegment('Clearbridge Investments LLC') = 'unknown'.
     // extractSignals must call deriveAdvSegment: institutional clients dominate → asset_manager.
     const sigs = extractSignals(firmADV({
       firmName:         'Clearbridge Investments LLC',
@@ -251,7 +251,7 @@ describe('extractSignals — ADV segment derived from clientTypes, not cached in
     };
     // Live ingest: inferred_segment already computed by normalizeFromFirm
     const liveSigs = extractSignals(firmADV({ ...base, inferred_segment: 'asset_manager' }), NAME_SIGNALS);
-    // Backfill: inferred_segment set to inferSegment(firmName) = 'other' (name heuristic)
+    // Backfill: inferred_segment set to inferSegment(firmName) = 'unknown' (name heuristic)
     const backfillSigs = extractSignals(firmADV({ ...base, inferred_segment: 'other' }), NAME_SIGNALS);
     expect(liveSigs.segment_inferred.value).toBe(backfillSigs.segment_inferred.value);
     expect(liveSigs.segment_inferred.confidence).toBe(backfillSigs.segment_inferred.confidence);
@@ -816,18 +816,19 @@ describe('13F segment heuristic — improved token rules', () => {
     }
   });
 
-  it('Sanders Morris Harris (no reliable token) → other', () => {
+  it('Sanders Morris Harris (no reliable token) → unknown (enrichment queue)', () => {
     const sigs = sigFor('Sanders Morris Harris');
     const seg = deriveSegmentCanonical(sigs, SEGMENT_MAPPINGS);
-    expect(seg.value).toBe('other');
+    expect(seg.value).toBe('unknown');
     expect(seg.confidence).toBe('low');
   });
 
-  it('unknown firm name → segment_canonical=other, confidence=low', () => {
+  it('13F name-miss → segment_canonical=unknown (not other), confidence=low', () => {
     const sigs = sigFor('Acme Investments XYZ');
     const seg = deriveSegmentCanonical(sigs, SEGMENT_MAPPINGS);
-    // 'other' may or may not be in taxonomy_mappings — fallback uses raw value
-    expect(seg.value).toBe('other');
+    // 'unknown' has no ingest_13f mapping → fallback uses raw value → lands in
+    // the WHERE segment_canonical='unknown' enrichment predicate.
+    expect(seg.value).toBe('unknown');
     expect(seg.confidence).toBe('low');
   });
 

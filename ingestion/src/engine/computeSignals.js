@@ -62,8 +62,12 @@ export function assetMix(holdings) {
  * Infer institutional segment from firm name tokens (case-insensitive).
  *
  * Rules are ordered most-specific → least-specific. All inferences are
- * confidence='low' — a name is a weak signal. 'other' is returned when no
- * token reliably indicates the firm type, rather than guessing 'hedge_fund'.
+ * confidence='low' — a name is a weak signal. When no token reliably indicates
+ * the firm type the fallback is 'unknown' (could-not-classify → enrichment
+ * queue), NOT 'other'. 'other' is reserved for a positive classification of a
+ * firm type outside the taxonomy (manual/enrichment), and is never produced
+ * automatically — same status as quant_fund/prop_trading (reachable, just not
+ * currently auto-derived).
  *
  * ADV segment inference is overridden downstream by client-type data
  * (confidence='high') — this function is the shared starting point.
@@ -108,8 +112,8 @@ export function inferSegment(firmName) {
   // less misleading than defaulting to hedge_fund
   if (/\bpartners?\b|\bcapital\b/.test(n))                return 'asset_manager';
 
-  // No reliable signal — honest fallback
-  return 'other';
+  // No reliable signal — could-not-classify → enrichment queue (NOT 'other').
+  return 'unknown';
 }
 
 /**
