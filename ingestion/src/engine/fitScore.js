@@ -1,8 +1,9 @@
 import { supabase } from '../supabaseClient.js';
 import { logger }   from '../utils/logger.js';
 
-// Module-level cache — weights are stable within a single run
+// Module-level caches — config is stable within a single run.
 let _weights = null;
+let _tierCfg = null;
 
 async function loadWeights() {
   if (_weights) return _weights;
@@ -33,13 +34,56 @@ async function loadWeights() {
   return _weights;
 }
 
+// segment fit_tier map (taxonomy_values, 'segment' taxonomy) + tier→ratio map
+// (fit_tier_ratios). A NULL fit_tier means ABSTAIN (no ratio; handled in code).
+async function loadTierConfig() {
+  if (_tierCfg) return _tierCfg;
+
+  const { data: tax } = await supabase
+    .from('taxonomies').select('id').eq('taxonomy_key', 'segment').maybeSingle();
+
+  let segmentTiers = {};
+  if (tax) {
+    const { data: vals } = await supabase
+      .from('taxonomy_values').select('value_key, fit_tier').eq('taxonomy_id', tax.id);
+    segmentTiers = Object.fromEntries((vals ?? []).map(v => [v.value_key, v.fit_tier ?? null]));
+  }
+
+  const { data: ratios } = await supabase.from('fit_tier_ratios').select('tier, ratio');
+  const tierRatios = Object.fromEntries((ratios ?? []).map(r => [r.tier, Number(r.ratio)]));
+
+  _tierCfg = { segmentTiers, tierRatios };
+  return _tierCfg;
+}
+
 /**
- * Compute prospect fit score from signals on a prospect object.
- * Returns { score: number, breakdown: object }
+ * Load the full fit-score config bundle (weights + segment tiers + tier ratios).
+ * Callers inject this into computeFitScore — the pure scorer never fetches.
  */
-export async function computeFitScore(prospect) {
-  const w   = await loadWeights();
-  const bd  = {};
+export async function loadFitScoreConfig() {
+  const [weights, tierCfg] = await Promise.all([loadWeights(), loadTierConfig()]);
+  return { weights, ...tierCfg };
+}
+
+/**
+ * Compute prospect fit score. PURE + SYNCHRONOUS — the config bundle
+ * { weights, segmentTiers, tierRatios } is INJECTED, never fetched inside, so
+ * the Config UI preview can call this with a candidate config (the seam).
+ *
+ * Segment scoring is fully config-driven: the firm's segment_canonical maps to a
+ * fit_tier (taxonomy_values) → a ratio (fit_tier_ratios). A NULL tier (e.g.
+ * 'other'/'unknown', or an unmapped segment) ABSTAINS — filer_type is dropped
+ * from BOTH the points sum and the weight denominator, and the remaining
+ * criteria renormalize to 100 (a true abstain, not a 0.5 filler, not a downward
+ * prior). Keys on segment_canonical (falls back to inferred_segment).
+ *
+ * Returns { score: number, breakdown: object }.
+ */
+export function computeFitScore(prospect, cfg = {}) {
+  const w            = cfg.weights ?? {};
+  const segmentTiers = cfg.segmentTiers ?? {};
+  const tierRatios   = cfg.tierRatios ?? {};
+  const bd           = {};
 
   // aum_tier
   const aum        = prospect.estimated_aum_usd ?? 0;
@@ -65,21 +109,16 @@ export async function computeFitScore(prospect) {
   const cntRatio = cnt >= 100 ? 1.0 : cnt >= 50 ? 0.5 : 0.25;
   bd.position_count = { weight: w.position_count ?? 5, ratio: cntRatio, points: Math.round((w.position_count ?? 5) * cntRatio) };
 
-  // filer_type (weight reduced from 15→10 after migration 016).
-  // ABSTENTION: for an unclassified segment ('unknown' or 'other') the segment
-  // prior contributes NOTHING — it is removed from the criteria sum and the
-  // remaining criteria are renormalized to 100 (see below). This is a true
-  // abstain, not a fixed 0.5 filler and not a downward prior: the firm is
-  // scored purely on its other signals.
-  const seg     = prospect.inferred_segment ?? '';
-  const filerW  = w.filer_type ?? 10;
-  if (seg === 'unknown' || seg === 'other') {
+  // filer_type — config-driven segment tier → ratio. Keys on segment_canonical.
+  // A NULL/absent tier ABSTAINS (renormalize; see below).
+  const seg    = prospect.segment_canonical ?? prospect.inferred_segment ?? '';
+  const filerW = w.filer_type ?? 10;
+  const tier   = segmentTiers[seg];
+  if (tier == null) {
     bd.filer_type = { weight: filerW, ratio: null, points: 0, abstained: true };
   } else {
-    const segRatio = ['hedge_fund', 'quant_fund', 'prop_trading', 'prop_trader'].includes(seg) ? 1.0
-                   : seg === 'pension' ? 0.25
-                   : 0.5;
-    bd.filer_type = { weight: filerW, ratio: segRatio, points: Math.round(filerW * segRatio) };
+    const ratio = tierRatios[tier] ?? 0;
+    bd.filer_type = { weight: filerW, ratio, points: Math.round(filerW * ratio) };
   }
 
   // client_type_fit — ADV: pooled/institutional full, HNW partial, retail/absent zero
@@ -97,8 +136,8 @@ export async function computeFitScore(prospect) {
   bd.private_fund_adviser = { weight: w.private_fund_adviser ?? 5, ratio: pfRatio, points: Math.round((w.private_fund_adviser ?? 5) * pfRatio) };
 
   // Renormalize over the criteria that actually scored: an abstained criterion
-  // (segment for unknown/other) is excluded from BOTH the points sum and the
-  // weight denominator, so the score is the firm's percentage on the remaining
+  // (segment for null-tier) is excluded from BOTH the points sum and the weight
+  // denominator, so the score is the firm's percentage on the remaining
   // criteria. When nothing abstains, totalWeight = 100 and this reduces to the
   // plain points sum (behavior unchanged for classified firms).
   const scored      = Object.values(bd).filter(b => !b.abstained);

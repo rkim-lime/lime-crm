@@ -33,8 +33,8 @@ const NAME_SIGNALS = [
   { pattern: 'pension|endowment|foundation',                     target_segment: 'pension',        signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 5,  is_active: true },
   { pattern: 'family\\s+office',                                 target_segment: 'family_office',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 6,  is_active: true },
   { pattern: 'broker|dealer|brokerage|securities',               target_segment: 'broker_dealer',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 7,  is_active: true },
-  { pattern: 'quant(?:itative)?|systematic|algorithmic',         target_segment: 'quant_fund',     signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8,  is_active: true },
-  { pattern: 'prop(?:rietary)?|trading\\s+co',                   target_segment: 'prop_trading',   signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true },
+  { pattern: '\\bquant(?:itative)?\\b|\\bsystematic\\b|\\balgorithmic\\b', target_segment: 'quant_fund', signal_kind: 'fund_type', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8, is_active: true, promote_from: ['hedge_fund'] },
+  { pattern: '\\bprop(?:rietary)?\\b|trading\\s+co',             target_segment: 'prop_trading',   signal_kind: 'fund_type',   vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true, promote_from: ['hedge_fund'] },
   { pattern: '\\bhedge\\b',                                       target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 10, is_active: true },
   { pattern: 'master\\s+fund|feeder\\s+fund|offshore\\s+fund',    target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 11, is_active: true },
 ];
@@ -389,6 +389,46 @@ describe('deriveAdvSegment — name veto blocks hedge_fund', () => {
     const r = deriveAdvSegment('Quant Systematic Fund', ['pooled_investment_vehicles'], true, NAME_SIGNALS);
     expect(r.value).toBe('quant_fund');
     expect(r.confidence).toBe('high');
+  });
+});
+
+describe('deriveAdvSegment — fund_type promotion (anchored, config-driven)', () => {
+  // Anchored patterns must NOT match the confirmed false positives.
+  it('QUANTECH / QUANTCA (pooled) → hedge_fund, NOT quant_fund', () => {
+    expect(deriveAdvSegment('QUANTECH LLC', ['pooled_investment_vehicles'], true, NAME_SIGNALS).value).toBe('hedge_fund');
+    expect(deriveAdvSegment('QUANTCA CAPITAL', ['pooled_investment_vehicles'], true, NAME_SIGNALS).value).toBe('hedge_fund');
+  });
+  it('PROPERTY / PROPEL (pooled) → hedge_fund, NOT prop_trading', () => {
+    expect(deriveAdvSegment('PROPERTY GROUP LP', ['pooled_investment_vehicles'], true, NAME_SIGNALS).value).toBe('hedge_fund');
+    expect(deriveAdvSegment('PROPEL ADVISORS', ['pooled_investment_vehicles'], true, NAME_SIGNALS).value).toBe('hedge_fund');
+  });
+
+  // The three cases.
+  it('empty clientTypes + systematic name → quant_fund (DIRECT target)', () => {
+    const r = deriveAdvSegment('Systematic Alpha', [], false, NAME_SIGNALS);
+    expect(r.value).toBe('quant_fund');
+    expect(r.basis).toBe('adv_name_signal');
+  });
+  it('hedge_fund base + systematic → quant_fund (PROMOTION)', () => {
+    const r = deriveAdvSegment('Systematic Capital', ['pooled_investment_vehicles'], true, NAME_SIGNALS);
+    expect(r.value).toBe('quant_fund');
+  });
+  it('asset_manager base + quantitative → stays asset_manager + possible_quant_fund FLAG', () => {
+    const r = deriveAdvSegment('Quantitative Advisers', ['institutional'], false, NAME_SIGNALS);
+    expect(r.value).toBe('asset_manager');
+    expect(r.flags).toEqual({ possible_quant_fund: true });
+  });
+  it('wealth_manager base + fund-type name → stays wealth_manager + flag (never demote)', () => {
+    const r = deriveAdvSegment('Systematic Partners', ['high_net_worth'], false, NAME_SIGNALS);
+    expect(r.value).toBe('wealth_manager');
+    expect(r.flags).toEqual({ possible_quant_fund: true });
+  });
+
+  it('config-driven: adding asset_manager to promote_from promotes an asset_manager base', () => {
+    const cfg = NAME_SIGNALS.map(r =>
+      r.target_segment === 'quant_fund' ? { ...r, promote_from: ['hedge_fund', 'asset_manager'] } : r);
+    expect(deriveAdvSegment('Quant Advisers', ['institutional'], false, NAME_SIGNALS).value).toBe('asset_manager'); // default
+    expect(deriveAdvSegment('Quant Advisers', ['institutional'], false, cfg).value).toBe('quant_fund');             // promoted
   });
 });
 

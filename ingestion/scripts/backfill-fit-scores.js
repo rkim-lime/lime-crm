@@ -31,7 +31,7 @@
  */
 
 import { supabase } from '../src/supabaseClient.js';
-import { computeFitScore } from '../src/engine/fitScore.js';
+import { computeFitScore, loadFitScoreConfig } from '../src/engine/fitScore.js';
 
 const PAGE_SIZE = 100;
 const DRY_RUN   = process.env.DRY_RUN === 'true';
@@ -51,7 +51,8 @@ function scoringInput(prospect) {
     equities_pct:           prospect.equities_pct,
     options_present:        prospect.options_present,
     position_count:         prospect.position_count,
-    inferred_segment:       prospect.segment_canonical ?? prospect.inferred_segment ?? '',
+    // fitScore keys on segment_canonical (the authoritative, config-driven value).
+    segment_canonical:      prospect.segment_canonical ?? prospect.inferred_segment ?? '',
     clientTypes:            ns.client_types?.value ?? [],
     advFlags:               { hasPrivateFundClients: ns.has_private_fund_clients?.value ?? false },
   };
@@ -69,6 +70,7 @@ function record(stats, segment, score) {
 async function main() {
   logger.info(`Fit-score backfill starting${DRY_RUN ? ' [DRY RUN — no writes]' : ''}`);
 
+  const cfg = await loadFitScoreConfig();   // inject once; computeFitScore never fetches
   const stats = makeStats();
   let total = 0, errors = 0, offset = 0;
 
@@ -87,9 +89,9 @@ async function main() {
     for (const prospect of prospects) {
       try {
         const input = scoringInput(prospect);
-        const { score, breakdown } = await computeFitScore({ ...input, id: prospect.id });
-        record(stats, input.inferred_segment, score);
-        if (breakdown.filer_type?.abstained) stats[input.inferred_segment ?? 'NULL'].abstained++;
+        const { score, breakdown } = computeFitScore({ ...input, id: prospect.id }, cfg);
+        record(stats, input.segment_canonical, score);
+        if (breakdown.filer_type?.abstained) stats[input.segment_canonical ?? 'NULL'].abstained++;
 
         if (!DRY_RUN) {
           await supabase

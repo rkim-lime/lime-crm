@@ -28,6 +28,17 @@ vi.mock('../src/utils/logger.js', () => ({
 
 const { computeFitScore } = await import('../src/engine/fitScore.js');
 
+// Config fixtures (mirror taxonomy_values fit_tier + fit_tier_ratios). Injected —
+// computeFitScore never fetches. Weights fall to the built-in migration-016 defaults.
+const SEGMENT_TIERS = {
+  hedge_fund: 'high', quant_fund: 'high', prop_trading: 'high',
+  asset_manager: 'medium', family_office: 'medium', broker_dealer: 'medium',
+  wealth_manager: 'low', bank: 'low', pension: 'low', insurance: 'low',
+  other: null, unknown: null,
+};
+const TIER_RATIOS = { high: 1.0, medium: 0.5, low: 0.25 };
+const fit = (p, extra = {}) => computeFitScore(p, { segmentTiers: SEGMENT_TIERS, tierRatios: TIER_RATIOS, ...extra });
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /** Build a minimal prospect with sensible defaults for fields not under test. */
@@ -49,7 +60,7 @@ function prospect(overrides = {}) {
 
 describe('computeFitScore', () => {
   it('scores a high-fit 13F prospect near the top', async () => {
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      2_000_000_000,  // $2B → aumRatio 1.0 → 20 pts
       portfolio_turnover_pct: 75,             // ≥50 → 1.0 → 25 pts
       equities_pct:           90,             // ≥70 → 1.0 → 15 pts
@@ -71,7 +82,7 @@ describe('computeFitScore', () => {
   });
 
   it('scores a low-fit prospect near the bottom', async () => {
-    const { score } = await computeFitScore(prospect({
+    const { score } = fit(prospect({
       estimated_aum_usd:      5_000_000,    // <$100M → 0.25 → 5
       portfolio_turnover_pct: 5,            // <25 → 0.25 → 6
       equities_pct:           10,           // <40 → 0.25 → 4
@@ -85,7 +96,7 @@ describe('computeFitScore', () => {
   });
 
   it('ADV prospect with pooled vehicles + private fund scores client-type criteria', async () => {
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      2_000_000_000,
       portfolio_turnover_pct: null,           // unknown → 0.5 → 13
       equities_pct:           0,              // ADV has no position data → 4
@@ -101,7 +112,7 @@ describe('computeFitScore', () => {
   });
 
   it('ADV with HNW-only clients scores client_type_fit at 0.5', async () => {
-    const { breakdown } = await computeFitScore(prospect({
+    const { breakdown } = fit(prospect({
       clientTypes: ['high_net_worth', 'individuals'],
       advFlags:    { hasPrivateFundClients: false },
     }));
@@ -111,7 +122,7 @@ describe('computeFitScore', () => {
 
   it('13F prospect (no clientTypes) scores 0 on ADV criteria without error', async () => {
     // Confirms graceful-missing-signal behavior: undefined clientTypes → []
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      500_000_000,
       portfolio_turnover_pct: 30,
       equities_pct:           80,
@@ -129,7 +140,7 @@ describe('computeFitScore', () => {
 
   it('MK Capital edge case: null AUM + private fund flag produces valid score', async () => {
     // estimated_aum_usd = 0 (regulatoryAum ?? 0 in normalize), advFlags present
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      0,    // normalized from null regulatoryAum
       portfolio_turnover_pct: null,
       equities_pct:           0,
@@ -148,7 +159,7 @@ describe('computeFitScore', () => {
   });
 
   it('null/undefined signals never throw and produce a numeric score', async () => {
-    const { score } = await computeFitScore({});
+    const { score } = fit({});
     expect(typeof score).toBe('number');
     expect(isNaN(score)).toBe(false);
     expect(score).toBeGreaterThanOrEqual(0);
@@ -156,7 +167,7 @@ describe('computeFitScore', () => {
 
   it('score is capped at 100', async () => {
     // All ratios at 1.0 = exactly 100 (weights sum to 100)
-    const { score } = await computeFitScore(prospect({
+    const { score } = fit(prospect({
       estimated_aum_usd:      1_000_000_000,
       portfolio_turnover_pct: 75,
       equities_pct:           90,
@@ -172,7 +183,7 @@ describe('computeFitScore', () => {
   });
 
   it('breakdown keys match all eight scoring criteria', async () => {
-    const { breakdown } = await computeFitScore(prospect());
+    const { breakdown } = fit(prospect());
     const keys = Object.keys(breakdown).sort();
     expect(keys).toEqual([
       'aum_tier', 'client_type_fit', 'equity_concentration',
@@ -191,7 +202,7 @@ describe('computeFitScore', () => {
 
 describe('computeFitScore — segment abstention', () => {
   it("'unknown' abstains: filer_type contributes 0 and is renormalized out", async () => {
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      2_000_000_000, // 1.0 → 20
       portfolio_turnover_pct: null,          // 0.5 → 13
       equities_pct:           0,             // 0.25 → 4
@@ -214,14 +225,14 @@ describe('computeFitScore — segment abstention', () => {
       equities_pct:           0,
       position_count:         0,
     };
-    const unknown = await computeFitScore(prospect({ ...inputs, inferred_segment: 'unknown' }));
-    const other   = await computeFitScore(prospect({ ...inputs, inferred_segment: 'other' }));
+    const unknown = fit(prospect({ ...inputs, inferred_segment: 'unknown' }));
+    const other   = fit(prospect({ ...inputs, inferred_segment: 'other' }));
     expect(other.score).toBe(unknown.score);
     expect(other.breakdown.filer_type.abstained).toBe(true);
   });
 
   it('renormalization is not a downward prior — a data-rich unknown can still reach 100', async () => {
-    const { score } = await computeFitScore(prospect({
+    const { score } = fit(prospect({
       estimated_aum_usd:      1_000_000_000, // 1.0 → 20
       portfolio_turnover_pct: 75,            // 1.0 → 25
       equities_pct:           90,            // 1.0 → 15
@@ -236,7 +247,7 @@ describe('computeFitScore — segment abstention', () => {
   });
 
   it('a thin unknown scores low (renormalized), reflecting weak other signals', async () => {
-    const { score } = await computeFitScore(prospect({
+    const { score } = fit(prospect({
       estimated_aum_usd:      5_000_000, // 0.25 → 5
       portfolio_turnover_pct: 5,         // 0.25 → 6
       equities_pct:           10,        // 0.25 → 4
@@ -251,7 +262,7 @@ describe('computeFitScore — segment abstention', () => {
   it('a classified segment is unchanged (no renormalization when nothing abstains)', async () => {
     // Same non-segment signals as the first abstention test, but segment = broker_dealer
     // (0.5 → 5 pts). Weights sum to 100, so score = plain points sum = 38 + 5 = 43.
-    const { score, breakdown } = await computeFitScore(prospect({
+    const { score, breakdown } = fit(prospect({
       estimated_aum_usd:      2_000_000_000,
       portfolio_turnover_pct: null,
       equities_pct:           0,
@@ -262,5 +273,42 @@ describe('computeFitScore — segment abstention', () => {
     expect(breakdown.filer_type.abstained).toBeUndefined();
     expect(breakdown.filer_type.points).toBe(5);
     expect(score).toBe(43);
+  });
+});
+
+// ── Config-driven segment tier → ratio ──────────────────────────────────────────
+describe('computeFitScore — segment tier scoring (config-driven)', () => {
+  it("prop_trading scores ratio 1.0 (regression: old hardcoded list had the 'prop_trader' typo)", () => {
+    const { breakdown } = fit(prospect({ segment_canonical: 'prop_trading' }));
+    expect(breakdown.filer_type.ratio).toBe(1.0);   // high tier
+    expect(breakdown.filer_type.points).toBe(10);
+  });
+
+  it('wealth_manager scores ratio 0.25 (low tier)', () => {
+    const { breakdown } = fit(prospect({ segment_canonical: 'wealth_manager' }));
+    expect(breakdown.filer_type.ratio).toBe(0.25);
+    expect(breakdown.filer_type.points).toBe(3);    // round(10 * 0.25)
+  });
+
+  it('keys on segment_canonical, not inferred_segment', () => {
+    // canonical says prop_trading (high 1.0); the stale inferred_segment 'other' would abstain.
+    const { breakdown } = fit(prospect({ segment_canonical: 'prop_trading', inferred_segment: 'other' }));
+    expect(breakdown.filer_type.abstained).toBeUndefined();
+    expect(breakdown.filer_type.ratio).toBe(1.0);
+  });
+
+  it('unknown / other still abstain + renormalize (tier is null)', () => {
+    const u = fit(prospect({ segment_canonical: 'unknown' }));
+    const o = fit(prospect({ segment_canonical: 'other' }));
+    expect(u.breakdown.filer_type.abstained).toBe(true);
+    expect(o.breakdown.filer_type.abstained).toBe(true);
+  });
+
+  it('config-driven: changing fit_tier_ratios changes the score', () => {
+    const base = fit(prospect({ segment_canonical: 'hedge_fund' }));      // high 1.0 → 10 pts
+    const half = fit(prospect({ segment_canonical: 'hedge_fund' }), { tierRatios: { high: 0.5, medium: 0.5, low: 0.25 } });
+    expect(base.breakdown.filer_type.points).toBe(10);
+    expect(half.breakdown.filer_type.points).toBe(5);
+    expect(half.score).toBeLessThan(base.score);
   });
 });

@@ -59,8 +59,8 @@ const NAME_SIGNALS = [
   { pattern: 'pension|endowment|foundation',                     target_segment: 'pension',        signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 5,  is_active: true },
   { pattern: 'family\\s+office',                                 target_segment: 'family_office',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 6,  is_active: true },
   { pattern: 'broker|dealer|brokerage|securities',               target_segment: 'broker_dealer',  signal_kind: 'name_signal', vetoes_hedge_fund: true,  confidence: 'low',    sort_order: 7,  is_active: true },
-  { pattern: 'quant(?:itative)?|systematic|algorithmic',         target_segment: 'quant_fund',     signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8,  is_active: true },
-  { pattern: 'prop(?:rietary)?|trading\\s+co',                   target_segment: 'prop_trading',   signal_kind: 'name_signal', vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true },
+  { pattern: '\\bquant(?:itative)?\\b|\\bsystematic\\b|\\balgorithmic\\b', target_segment: 'quant_fund', signal_kind: 'fund_type', vetoes_hedge_fund: false, confidence: 'medium', sort_order: 8, is_active: true, promote_from: ['hedge_fund'] },
+  { pattern: '\\bprop(?:rietary)?\\b|trading\\s+co',             target_segment: 'prop_trading',   signal_kind: 'fund_type',   vetoes_hedge_fund: false, confidence: 'low',    sort_order: 9,  is_active: true, promote_from: ['hedge_fund'] },
   { pattern: '\\bhedge\\b',                                       target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 10, is_active: true },
   { pattern: 'master\\s+fund|feeder\\s+fund|offshore\\s+fund',    target_segment: 'hedge_fund',     signal_kind: 'fund_name',   vetoes_hedge_fund: false, confidence: 'medium', sort_order: 11, is_active: true },
 ];

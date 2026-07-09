@@ -126,6 +126,7 @@ export function extractSignals(firmSignal, nameSignals = []) {
         source:     'sec_adv',
         as_of:      null,
         confidence: seg.confidence,
+        flags:      seg.flags ?? null, // possible_<subtype> enrichment leads (fund_type on a non-promote base)
       };
     }
 
@@ -491,6 +492,7 @@ export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
     aum_as_of:           aumResult.as_of    ?? null,
     segment_canonical:   segResult.value    ?? null,
     segment_confidence:  segResult.confidence ?? null,
+    segment_flags:       merged.segment_inferred?.flags ?? null,
     size_tier:           sizeTier,
     signal_completeness: completeness,
     normalized_signals:  merged,

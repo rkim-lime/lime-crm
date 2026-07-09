@@ -36,9 +36,19 @@ Seed: realty, energy, credit, fixed income, bond, mortgage, municipal, commoditi
 `verdict` → `action` ∈ {`gate`, `penalize`, `pass`}. Seed: irrelevant→gate, suspect→penalize, rest→pass.
 Only `gate` excludes (reversibly, via the prospect override columns); `unknown` always passes.
 
-## Segment derivation (migrations 024–025)
-- `segment_name_signals` — name→segment rules, veto flags, fund-name corroboration (`sort_order` precedence).
+## Segment derivation (migrations 024–025, 028)
+- `segment_name_signals` — name→segment rules (`sort_order` precedence). `signal_kind`:
+  - `name_signal` — direct name→segment (with optional `vetoes_hedge_fund`).
+  - `fund_name` — corroborates hedge_fund.
+  - `fund_type` — fund-subtype (quant/prop). **`promote_from text[]`** = base composition
+    verdicts eligible to promote to the subtype; a match on a base NOT in `promote_from`
+    keeps the base and raises `segment_flags.possible_<target>`. `promote_from` governs ONLY
+    the composition path — the empty-clientTypes name path treats every rule as a direct target.
 - `taxonomy_values.label` — segment display labels (single source of truth).
+- `taxonomy_values.fit_tier` — per-segment fit tier (high/medium/low; NULL = abstain).
+- **`fit_tier_ratios`** (migration 028) — `tier → ratio` (high 1.0 / medium 0.5 / low 0.25).
+  fitScore maps `taxonomy_values.fit_tier` → ratio through this table; injected into
+  `computeFitScore` (never fetched inside), so the Config UI preview can score a candidate config.
 
 ## Other existing config
 - `icp_filter_config` — min AUM / turnover / positions, excluded segments.

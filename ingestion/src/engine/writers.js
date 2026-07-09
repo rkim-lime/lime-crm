@@ -1,4 +1,4 @@
-import { computeFitScore } from './fitScore.js';
+import { computeFitScore, loadFitScoreConfig } from './fitScore.js';
 
 export async function loadIcpConfig(supabase) {
   const { data } = await supabase
@@ -82,7 +82,8 @@ export async function upsertSource(supabase, prospectId, source, sourceUrl, rawS
 }
 
 export async function saveFitScore(supabase, prospectId, payload) {
-  const { score, breakdown } = await computeFitScore({ ...payload, id: prospectId });
+  const cfg = await loadFitScoreConfig();            // inject config; computeFitScore never fetches
+  const { score, breakdown } = computeFitScore({ ...payload, id: prospectId }, cfg);
 
   await supabase
     .from('prospects')
