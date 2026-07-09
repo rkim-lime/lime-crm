@@ -139,6 +139,14 @@ describe('extractSignals — 13F', () => {
     expect(sigs.aum_13f_portfolio.as_of).toBeNull();
   });
 
+  it('as_of comes from the latest filing periodOfReport — FIX A: buildFirmSignal13F now emits it', () => {
+    // buildFirmSignal13F(prospect, rawSignals, periodOfReport) sets
+    // quarters: [{ filing: { periodOfReport } }] so the recompute tuple carries as_of.
+    const dated = extractSignals(firm13F({ quarters: [{ filing: { periodOfReport: '2026-03-31' } }] }));
+    expect(dated.segment_inferred.as_of).toBe('2026-03-31');
+    expect(dated.aum_13f_portfolio.as_of).toBe('2026-03-31');
+  });
+
   it('does not produce ADV-only signals', () => {
     const sigs = extractSignals(firm13F());
     expect(sigs.aum_adv_regulatory).toBeUndefined();
@@ -376,6 +384,29 @@ describe('mergeSignal', () => {
     const highAdv = { value: 'hedge_fund', confidence: 'high', source: 'sec_adv', as_of: null,         basis: 'adv_client_type' };
     expect(mergeSignal(low13f, highAdv)).toBe(highAdv);
     expect(mergeSignal(highAdv, low13f)).toBe(highAdv);
+  });
+
+  // ── recompute: authoritative backfill re-derivation ──
+  const dated   = { value: 'other',   confidence: 'low', source: 'sec_13f', as_of: '2026-03-31', basis: '13f_name_heuristic' };
+  const undated = { value: 'unknown', confidence: 'low', source: 'sec_13f', as_of: null,         basis: '13f_name_heuristic' };
+
+  it('same-source: dated existing + undated incoming + recompute:true → incoming WINS (the freeze fix)', () => {
+    expect(mergeSignal(dated, undated, { recompute: true })).toBe(undated);
+  });
+  it('same-source: dated existing + undated incoming + recompute:false → existing wins (out-of-order guard intact)', () => {
+    expect(mergeSignal(dated, undated, { recompute: false })).toBe(dated);
+    expect(mergeSignal(dated, undated)).toBe(dated); // default = guard
+  });
+  it('same-source: dated existing + NEWER dated incoming → incoming wins (unchanged)', () => {
+    const newer = { ...undated, as_of: '2026-06-30' };
+    expect(mergeSignal(dated, newer)).toBe(newer);
+    expect(mergeSignal(dated, newer, { recompute: true })).toBe(newer);
+  });
+  it('same-source: dated existing + OLDER dated incoming, recompute:false → existing wins (out-of-order guard)', () => {
+    const older = { ...undated, as_of: '2025-12-31' };
+    expect(mergeSignal(dated, older, { recompute: false })).toBe(dated);
+    // but an authoritative recompute overrides even an older date
+    expect(mergeSignal(dated, older, { recompute: true })).toBe(older);
   });
 });
 
@@ -732,6 +763,38 @@ describe('normalizeFirm — DB writes', () => {
     // Both existing and new signals present in merged output
     expect(updates.normalized_signals.turnover_pct).toBeDefined();
     expect(updates.normalized_signals.aum_13f_portfolio).toBeDefined();
+  });
+
+  it('recompute:true re-derives a DATED same-source incumbent (the freeze fix, end-to-end)', async () => {
+    // Incumbent: live-ingested 'other'/dated. Backfill re-derives 'unknown' with the
+    // same filing date — without recompute the dated incumbent would freeze it.
+    const existing = {
+      segment_inferred: { value: 'other', confidence: 'low', source: 'sec_13f', as_of: '2026-03-31', basis: '13f_name_heuristic' },
+    };
+    const { sb, updates } = makeFakeSupabase({ existingNorm: existing });
+    const ctx = { supabase: sb, logger: { warn: vi.fn() } };
+
+    await normalizeFirm(
+      ctx, { prospectId: 'p1' },
+      firm13F({ firmName: 'Navalign LLC', quarters: [{ filing: { periodOfReport: '2026-03-31' } }] }),
+      REFS, { recompute: true },
+    );
+    expect(updates.segment_canonical).toBe('unknown'); // fresh recompute won over dated 'other'
+  });
+
+  it('without recompute, a dated incumbent is preserved against an undated re-run (out-of-order guard)', async () => {
+    const existing = {
+      segment_inferred: { value: 'other', confidence: 'low', source: 'sec_13f', as_of: '2026-03-31', basis: '13f_name_heuristic' },
+    };
+    const { sb, updates } = makeFakeSupabase({ existingNorm: existing });
+    const ctx = { supabase: sb, logger: { warn: vi.fn() } };
+
+    await normalizeFirm(
+      ctx, { prospectId: 'p1' },
+      firm13F({ firmName: 'Navalign LLC', quarters: [] }), // undated incoming
+      REFS, // no recompute
+    );
+    expect(updates.segment_canonical).toBe('other'); // dated incumbent preserved
   });
 
   it('ADV firm: aum_basis is adv_regulatory', async () => {

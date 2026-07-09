@@ -39,7 +39,7 @@ const ctx = { supabase, logger };
 
 // ── Synthetic FirmSignal builders ─────────────────────────────────────────────
 
-function buildFirmSignal13F(prospect, rawSignals) {
+function buildFirmSignal13F(prospect, rawSignals, periodOfReport = null) {
   return {
     source:                 'sec_13f',
     cik:                    prospect.cik,
@@ -51,8 +51,22 @@ function buildFirmSignal13F(prospect, rawSignals) {
     equities_pct:           rawSignals.equities_pct ?? prospect.equities_pct ?? 0,
     options_present:        rawSignals.options_present ?? prospect.options_present ?? false,
     inferred_segment:       inferSegment(prospect.firm_name), // re-derive; don't use stale column
-    quarters:               [], // no quarter history in backfill; as_of will be null
+    // Preserve provenance: emit the latest filing date so the recompute tuple
+    // carries as_of. Emitting [] (as_of null) was silent provenance data loss.
+    quarters:               periodOfReport ? [{ filing: { periodOfReport } }] : [],
   };
+}
+
+// Latest 13F filing date for a prospect (as_of provenance for the backfill).
+async function latestPeriod(prospectId) {
+  const { data } = await supabase
+    .from('prospect_filings')
+    .select('period_of_report')
+    .eq('prospect_id', prospectId)
+    .order('period_of_report', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  return data?.period_of_report ?? null;
 }
 
 function buildFirmSignalADV(prospect, rawSignals) {
@@ -116,7 +130,7 @@ async function backfillProspects(normRefs) {
         for (const source of sourcesToProcess) {
           const rawSignals = sourceMap[source] ?? {};
           const firmSignal = source === 'sec_13f'
-            ? buildFirmSignal13F(prospect, rawSignals)
+            ? buildFirmSignal13F(prospect, rawSignals, await latestPeriod(prospect.id))
             : source === 'sec_adv'
               ? buildFirmSignalADV(prospect, rawSignals)
               : null;
@@ -124,7 +138,8 @@ async function backfillProspects(normRefs) {
           if (!firmSignal) continue;
 
           if (!DRY_RUN) {
-            await normalizeFirm(ctx, { prospectId: prospect.id }, firmSignal, normRefs);
+            // recompute: this backfill IS the authority — must overwrite dated incumbents.
+            await normalizeFirm(ctx, { prospectId: prospect.id }, firmSignal, normRefs, { recompute: true });
           }
         }
 
@@ -198,7 +213,7 @@ async function backfillAccounts(normRefs) {
             };
 
             const firmSignal = source === 'sec_13f'
-              ? buildFirmSignal13F(signalBase, rawSignals)
+              ? buildFirmSignal13F(signalBase, rawSignals, await latestPeriod(auditProspect.id))
               : source === 'sec_adv'
                 ? buildFirmSignalADV(signalBase, rawSignals)
                 : null;
@@ -206,7 +221,7 @@ async function backfillAccounts(normRefs) {
             if (!firmSignal) continue;
 
             if (!DRY_RUN) {
-              await normalizeFirm(ctx, { accountId: account.id }, firmSignal, normRefs);
+              await normalizeFirm(ctx, { accountId: account.id }, firmSignal, normRefs, { recompute: true });
             }
           }
         }

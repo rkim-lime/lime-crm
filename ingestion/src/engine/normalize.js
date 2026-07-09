@@ -165,13 +165,21 @@ export function extractSignals(firmSignal, nameSignals = []) {
  * high > medium would have kept the wrong value without this rule).
  *
  * Cross-source rule: higher confidence wins; recency (as_of) breaks ties.
+ *
+ * opts.recompute (backfill): a same-source recompute is an AUTHORITY, not a
+ * competitor — incoming always wins. Live ingestion leaves it false so the
+ * recency guard still protects against out-of-order arrival (Q1 landing after
+ * Q2 must not clobber Q2). Without this, a re-derived but UNDATED backfill tuple
+ * loses to a DATED live incumbent (`if (existing.as_of) return existing`),
+ * silently freezing every signal for every live-ingested 13F firm.
  */
-export function mergeSignal(existing, incoming) {
+export function mergeSignal(existing, incoming, opts = {}) {
   if (!existing) return incoming;
   if (!incoming) return existing;
 
-  // Same-source re-ingest: skip confidence comparison, use only recency.
+  // Same-source re-ingest: skip confidence comparison.
   if (existing.source && incoming.source && existing.source === incoming.source) {
+    if (opts.recompute) return incoming;       // authoritative recompute (backfill)
     if (existing.as_of && incoming.as_of) {
       return incoming.as_of >= existing.as_of ? incoming : existing;
     }
@@ -457,9 +465,10 @@ async function upsertIdentifiers(supabase, prospectId, accountId, firmSignal) {
  * @param refs       Pre-loaded reference tables from loadNormalizationRefs().
  *                   Pass null to load on demand (only for one-off calls).
  */
-export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
+export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null, opts = {}) {
   const { supabase, logger } = ctx;
   const { prospectId = null, accountId = null } = entityRef;
+  const { recompute = false } = opts; // backfill sets true → same-source recompute is authoritative
 
   const refsObj = refs ?? await loadNormalizationRefs(supabase);
   const { signalDefs, segmentMappings, sizeBands, nameSignals } = refsObj;
@@ -471,7 +480,7 @@ export async function normalizeFirm(ctx, entityRef, firmSignal, refs = null) {
   const existingNorm = await loadExistingNormalized(supabase, { prospectId, accountId });
   const merged = { ...(existingNorm ?? {}) };
   for (const [key, entry] of Object.entries(currentSignals)) {
-    merged[key] = mergeSignal(merged[key], entry);
+    merged[key] = mergeSignal(merged[key], entry, { recompute });
   }
 
   // ── 3. Derive canonical fields ─────────────────────────────────────────────
