@@ -435,7 +435,7 @@ async function loadPriorByKey(supabase, deltaKeys) {
  * Load everything, run active checks, persist check_results, and return
  * { overall, sanity }. `opts`: { jobRunId, gitSha, rowsChanged }.
  */
-export async function runSanityChecks(ctx, { jobRunId = null, gitSha = null, rowsChanged = null } = {}) {
+export async function runSanityChecks(ctx, { jobRunId = null, gitSha = null, rowsChanged = null, persist = true } = {}) {
   const { supabase, logger } = ctx;
 
   const { data: definitions } = await supabase
@@ -458,8 +458,8 @@ export async function runSanityChecks(ctx, { jobRunId = null, gitSha = null, row
 
   const { overall, results, sanity } = runChecks(bundle, defs);
 
-  // persist results
-  if (results.length) {
+  // persist results (skipped for a dry-run preview)
+  if (persist && results.length) {
     const rows = results.map(r => ({
       job_run_id: jobRunId, check_key: r.check_key, status: r.status,
       observed: r.observed, expected: r.expected, row_count: r.row_count,
