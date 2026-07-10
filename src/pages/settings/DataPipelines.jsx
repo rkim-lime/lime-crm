@@ -14,8 +14,18 @@ import {
   useResetJobRun,
   useDeleteJobDefinition,
   useUpdateJobDefinition,
+  useCheckResults,
 } from '../../hooks/useJobs';
 import { fmtRelTime, ErrorBanner, EmptyState, TableSkeleton } from '../shared';
+import {
+  runStatusMeta,
+  sanityDotColor,
+  flatStatEntries,
+  sanitySummaryParts,
+  buildObservedTable,
+  prettyJson,
+  CHECK_STATUS_PILL,
+} from './sanityResults';
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 
@@ -107,17 +117,11 @@ function scheduleLabel(sched) {
 }
 
 // ── Status badge ──────────────────────────────────────────────────────────────
-
-const STATUS_MAP = {
-  queued:    { bg: '#f1f5f9', color: '#64748b', label: 'Queued'    },
-  running:   { bg: '#eff6ff', color: '#2563eb', label: 'Running', pulse: true },
-  completed: { bg: '#f0fdf4', color: '#16a34a', label: 'Completed' },
-  failed:    { bg: '#fef2f2', color: '#dc2626', label: 'Failed'    },
-  cancelled: { bg: '#f8fafc', color: '#94a3b8', label: 'Cancelled' },
-};
+// STATUS_MAP (incl. completed_with_warnings) lives in ./sanityResults so it is
+// unit-testable without pulling in this React module.
 
 function RunStatusBadge({ status }) {
-  const s = STATUS_MAP[status] ?? STATUS_MAP.queued;
+  const s = runStatusMeta(status);
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -245,7 +249,20 @@ function RunTable({ runs, canWrite, onView, onCancel, onReset }) {
           {runs.map(run => (
             <tr key={run.id} style={{ cursor: 'pointer' }} onClick={() => onView(run.id)}>
               <td style={{ fontWeight: 500 }}>{run.definition?.name ?? '—'}</td>
-              <td><RunStatusBadge status={run.status} /></td>
+              <td>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <RunStatusBadge status={run.status} />
+                  {sanityDotColor(run.stats?.sanity) && (
+                    <span
+                      title={`Sanity: ${run.stats.sanity.fail} fail · ${run.stats.sanity.warn} warn`}
+                      style={{
+                        width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                        background: sanityDotColor(run.stats.sanity),
+                      }}
+                    />
+                  )}
+                </div>
+              </td>
               <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{run.trigger_source}</td>
               <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>{fmtRelTime(run.queued_at)}</td>
               <td style={{ fontSize: 12.5 }}>{fmtDuration(run)}</td>
@@ -278,6 +295,147 @@ function RunTable({ runs, canWrite, onView, onCancel, onReset }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Sanity checks section ─────────────────────────────────────────────────────
+
+const SECTION_LABEL = {
+  fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em',
+  color: 'var(--text-tertiary)', marginBottom: 10,
+};
+
+function SanityPill({ status }) {
+  const p = CHECK_STATUS_PILL[status] ?? CHECK_STATUS_PILL.pass;
+  return (
+    <span style={{
+      background: p.bg, color: p.color, padding: '1px 7px', borderRadius: 4,
+      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
+    }}>
+      {p.label}
+    </span>
+  );
+}
+
+function SanityTallies({ sanity }) {
+  const colorFor = (key, val) =>
+    key === 'fail' && val > 0 ? '#dc2626'
+      : key === 'warn' && val > 0 ? '#ca8a04'
+        : key === 'pass' ? '#16a34a'
+          : 'var(--text-primary)';
+  return (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+      {sanitySummaryParts(sanity).map((p) => (
+        <div key={p.key} style={{
+          padding: '6px 12px', background: 'var(--bg-secondary)', borderRadius: 6,
+          textAlign: 'center', minWidth: 54,
+        }}>
+          <div style={{ fontSize: 18, fontWeight: 700, lineHeight: 1.1, color: colorFor(p.key, p.value) }}>
+            {p.value}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-tertiary)', marginTop: 2 }}>{p.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Clean table for a known observed shape; graceful JSON fallback otherwise.
+function ObservedDetail({ checkKey, observed, expected, maps }) {
+  const table = buildObservedTable(checkKey, observed, maps);
+  if (!table) {
+    return (
+      <pre style={{ fontSize: 11.5, background: 'var(--bg-secondary)', padding: 10, borderRadius: 6, margin: 0, overflow: 'auto' }}>
+        {prettyJson({ observed, expected })}
+      </pre>
+    );
+  }
+  return (
+    <div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>{table.columns.map((c) => <th key={c}>{c}</th>)}</tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, i) => (
+              <tr key={i}>{row.map((cell, j) => <td key={j} style={{ fontSize: 12.5 }}>{cell}</td>)}</tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {table.more > 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 6 }}>
+          + {table.more} more (showing first {table.rows.length})
+        </div>
+      )}
+      {table.note && (
+        <div style={{ fontSize: 12, color: '#ca8a04', marginTop: 6 }}>⚠ {table.note}</div>
+      )}
+      {expected != null && (
+        <div style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 6 }}>
+          required: {prettyJson(expected)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CheckResultRow({ r, maps }) {
+  const [open, setOpen] = useState(false);
+  const expandable = r.status !== 'pass';
+  return (
+    <div style={{ borderBottom: '1px solid var(--border)', padding: '8px 2px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: expandable ? 'pointer' : 'default' }}
+        onClick={() => expandable && setOpen((o) => !o)}
+      >
+        <SanityPill status={r.status} />
+        <span style={{ fontSize: 12.5, fontFamily: 'monospace' }}>{r.check_key}</span>
+        {r.row_count > 0 && (
+          <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>
+            {r.row_count} row{r.row_count === 1 ? '' : 's'}
+          </span>
+        )}
+        {expandable && (
+          <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-tertiary)' }}>
+            {open ? '▾' : '▸'}
+          </span>
+        )}
+      </div>
+      {open && (
+        <div style={{ marginTop: 8, paddingLeft: 2 }}>
+          {r.definition?.description && (
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8, lineHeight: 1.45 }}>
+              {r.definition.description}
+            </div>
+          )}
+          <ObservedDetail checkKey={r.check_key} observed={r.observed} expected={r.expected} maps={maps} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SanityChecksSection({ runId, sanity }) {
+  const q = useCheckResults(runId);
+  const results = q.data?.results ?? [];
+  // Pre-sanity runs (before migration 029) carry neither → render nothing.
+  if (!sanity && !results.length && !q.isLoading) return null;
+
+  const maps = { firmById: q.data?.firmById ?? {}, dedupById: q.data?.dedupById ?? {} };
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <div style={SECTION_LABEL}>Sanity Checks</div>
+      {sanity && <SanityTallies sanity={sanity} />}
+      {q.isLoading && <div className="skeleton skeleton-text" style={{ width: '70%' }} />}
+      {!q.isLoading && !results.length && (
+        <div style={{ fontSize: 12.5, color: 'var(--text-tertiary)' }}>
+          No individual check results recorded for this run.
+        </div>
+      )}
+      {results.map((r) => <CheckResultRow key={r.id} r={r} maps={maps} />)}
     </div>
   );
 }
@@ -346,6 +504,9 @@ function RunDetailPanel({ runId, onClose }) {
               ['Finished', fmtDateTime(run.finished_at)],
               ['Duration', fmtDuration(run)],
               ['Worker',   run.claimed_by ? run.claimed_by.split('-').slice(0, 2).join('-') : '—'],
+              ['Commit',   run.git_sha
+                ? <span title={run.git_sha} style={{ fontFamily: 'monospace' }}>{run.git_sha.slice(0, 7)}</span>
+                : '—'],
             ].map(([label, val]) => (
               <div key={label}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: 2 }}>
@@ -356,14 +517,15 @@ function RunDetailPanel({ runId, onClose }) {
             ))}
           </div>
 
-          {/* Stats */}
-          {run.stats && Object.keys(run.stats).length > 0 && (
+          {/* Stats — flat scalar tiles only; the nested sanity object is excluded
+              (it would render as [object Object]) and gets its own section below. */}
+          {flatStatEntries(run.stats).length > 0 && (
             <div style={{ marginBottom: 24 }}>
               <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-tertiary)', marginBottom: 10 }}>
                 Results
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {Object.entries(run.stats).map(([k, v]) => (
+                {flatStatEntries(run.stats).map(([k, v]) => (
                   <div key={k} style={{
                     padding: '8px 14px', background: 'var(--bg-secondary)', borderRadius: 6,
                     textAlign: 'center', minWidth: 60,
@@ -375,6 +537,9 @@ function RunDetailPanel({ runId, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Sanity checks */}
+          <SanityChecksSection runId={runId} sanity={run.stats?.sanity} />
 
           {/* Config snapshot */}
           {run.config_snapshot && Object.keys(run.config_snapshot).length > 0 && (

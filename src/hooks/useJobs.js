@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../lib/supabase';
+import { collectResolution, sortResults } from '../pages/settings/sanityResults';
 
 const DEF_FIELDS = `
   id, name, description, job_type, config, is_active, created_at, updated_at,
@@ -13,7 +14,7 @@ const DEF_FIELDS = `
 const RUN_FIELDS = `
   id, job_definition_id, status, trigger_source, config_snapshot,
   queued_at, claimed_at, started_at, finished_at,
-  log, stats, error_message, claimed_by, created_at,
+  log, stats, error_message, claimed_by, created_at, git_sha,
   definition:job_definition_id(id, name, job_type)
 `;
 
@@ -195,6 +196,56 @@ export function useJobRun(id) {
       const run = query.state.data;
       if (!run) return false;
       return (run.status === 'queued' || run.status === 'running') ? 3000 : false;
+    },
+  });
+}
+
+// Sanity-check results for one job run + the firm/dedup lookups their observed
+// payloads reference. Resolution is batched (one .in() per entity type), never N+1.
+//
+// NOTE (deferred): standalone / CLI runs persist check_results with job_run_id = NULL
+// and have no UI surface — deliberate (the CLI exits non-zero on failure and is used
+// from the terminal). Add a 'Manual checks' view if manual runs become routine.
+export function useCheckResults(runId) {
+  return useQuery({
+    queryKey: ['check_results', runId],
+    enabled: !!runId,
+    queryFn: async () => {
+      const [{ data: results, error: e1 }, { data: defs, error: e2 }] = await Promise.all([
+        supabase
+          .from('check_results')
+          .select('id, check_key, status, observed, expected, row_count, created_at')
+          .eq('job_run_id', runId)
+          .order('created_at'),
+        supabase.from('check_definitions').select('check_key, description, severity, family'),
+      ]);
+      if (e1) throw e1;
+      if (e2) throw e2;
+
+      const defByKey = Object.fromEntries((defs ?? []).map((d) => [d.check_key, d]));
+      const enriched = (results ?? []).map((r) => ({ ...r, definition: defByKey[r.check_key] ?? null }));
+
+      // Batch-resolve entity ids referenced by observed payloads.
+      const { prospectIds, dedupIds } = collectResolution(enriched);
+      let dedupById = {};
+      if (dedupIds.length) {
+        const { data: dq } = await supabase
+          .from('dedup_queue')
+          .select('id, prospect_id, matched_name')
+          .in('id', dedupIds);
+        dedupById = Object.fromEntries((dq ?? []).map((d) => [d.id, d]));
+        for (const d of dq ?? []) if (d.prospect_id) prospectIds.push(d.prospect_id);
+      }
+      let firmById = {};
+      const uniqPids = [...new Set(prospectIds)];
+      if (uniqPids.length) {
+        const { data: ps } = await supabase
+          .from('prospects')
+          .select('id, firm_name')
+          .in('id', uniqPids);
+        firmById = Object.fromEntries((ps ?? []).map((p) => [p.id, p.firm_name]));
+      }
+      return { results: sortResults(enriched), firmById, dedupById };
     },
   });
 }
