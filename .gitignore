@@ -27,3 +27,4 @@ supabase/.temp
 *.sln
 *.sw?
 .vercel
+docs/Temporary

@@ -1,9 +1,17 @@
 import { hostname }                        from 'os';
+import { execSync }                        from 'child_process';
 import * as Sentry                         from '@sentry/node';
 import { supabase }                        from '../supabaseClient.js';
 import { logger }                          from '../utils/logger.js';
 import { runConnector }                    from '../engine/runConnector.js';
+import { runSanityChecks }                 from '../engine/sanityChecks.js';
 import { runScheduler, runSchedulerOnce }  from './scheduler.js';
+
+// Commit the worker is running — explicit CI env, else local git, else 'local'.
+function resolveGitSha() {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA;
+  try { return execSync('git rev-parse HEAD', { encoding: 'utf8' }).trim(); } catch { return 'local'; }
+}
 
 const POLL_INTERVAL_MS      = parseInt(process.env.WORKER_POLL_MS ?? '10000', 10);
 const STALE_THRESHOLD_MS    = 5 * 60 * 1000;  // 5 min — reliable with 30s heartbeat
@@ -148,21 +156,47 @@ async function executeJob(run) {
   }, HEARTBEAT_INTERVAL_MS);
 
   let succeeded = false;
+  const gitSha = resolveGitSha();
   try {
     const stats = await runConnector(jobType, config, { supabase, logger, onProgress });
+
+    // ── Post-job sanity checks (between runConnector's return and mark-completed) ──
+    let finalStatus = 'completed';
+    let sanityError = null;
+    try {
+      const rowsChanged = (stats.prospects ?? 0) + (stats.merges ?? 0) + (stats.accountMatches ?? 0) + (stats.dupes ?? 0);
+      const { overall, sanity } = await runSanityChecks({ supabase, logger }, { jobRunId: run.id, gitSha, rowsChanged });
+      stats.sanity = sanity;
+      finalStatus  = overall; // completed | completed_with_warnings | failed
+
+      if (sanity.fail > 0 || sanity.warn > 0) {
+        Sentry.withScope((scope) => {
+          scope.setTag('job_type', jobType);
+          scope.setContext('sanity', sanity);
+          if (sanity.fail > 0) Sentry.captureMessage(`Sanity FAIL run ${run.id}: ${sanity.fail} check(s) failed`, 'error');
+          else                 Sentry.captureMessage(`Sanity WARN run ${run.id}: ${sanity.warn} warning(s)`, 'warning');
+        });
+      }
+      if (sanity.fail > 0) sanityError = `${sanity.fail} sanity check(s) failed`;
+    } catch (checkErr) {
+      logger.warn(`[${workerId}] Sanity checks errored (job left as completed): ${checkErr.message}`);
+      Sentry.captureException(checkErr);
+    }
 
     await supabase
       .from('job_runs')
       .update({
-        status:      'completed',
-        finished_at: new Date().toISOString(),
+        status:        finalStatus,
+        finished_at:   new Date().toISOString(),
         stats,
-        log:         logLines.join('\n'),
+        log:           logLines.join('\n'),
+        git_sha:       gitSha,
+        ...(sanityError ? { error_message: sanityError } : {}),
       })
       .eq('id', run.id);
 
-    logger.info(`[${workerId}] Run ${run.id} completed — ${JSON.stringify(stats)}`);
-    succeeded = true;
+    logger.info(`[${workerId}] Run ${run.id} ${finalStatus} — ${JSON.stringify(stats)}`);
+    succeeded = finalStatus !== 'failed';
   } catch (err) {
     // Report to Sentry with job context — NOT config (may contain advBulkUrl etc.)
     Sentry.withScope((scope) => {
@@ -182,6 +216,7 @@ async function executeJob(run) {
         finished_at:   new Date().toISOString(),
         error_message: err.message,
         log:           logLines.join('\n'),
+        git_sha:       gitSha,
       })
       .eq('id', run.id);
 

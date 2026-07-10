@@ -70,6 +70,9 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           SEC_USER_AGENT:       ${{ secrets.SEC_USER_AGENT }}
           SENTRY_DSN:           ${{ secrets.SENTRY_DSN }}
+          # Explicit (not relying on the runner default) — recorded on job_runs.git_sha
+          # so a sanity-check failure is attributable to a specific commit.
+          GITHUB_SHA:           ${{ github.sha }}
           # FAIL_ON_JOB_ERROR: exit 1 if any job_run ends in 'failed' status.
           # This surfaces ingestion failures as a red X in the Actions tab and
           # can trigger GitHub's built-in email notification for failed workflows.

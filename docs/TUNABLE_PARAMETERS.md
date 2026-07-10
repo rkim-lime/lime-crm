@@ -50,6 +50,21 @@ Only `gate` excludes (reversibly, via the prospect override columns); `unknown` 
   fitScore maps `taxonomy_values.fit_tier` → ratio through this table; injected into
   `computeFitScore` (never fetched inside), so the Config UI preview can score a candidate config.
 
+## Sanity checks (migrations 029–030)
+- **`check_definitions`** — the check catalogue. Per-row tunables: `is_active`,
+  `severity` (warn|fail), `scope_type`/`scope_value`, and **`params` (jsonb)** for
+  per-check thresholds:
+  - `no_segment_over_90pct` → `params.max_share` (default `0.90`)
+  - `segment_distribution_shift` → `params.max_shift_pct` (default `10`)
+- **`signal_definitions.derivation`** (jsonb) — the drift registry that
+  `drift_stored_matches_derived` walks. `{target, kind, ...}` per signal
+  (passthrough / derived / by_source / skip). A NULL/absent descriptor makes the
+  drift check FAIL for that signal (coverage-hole guard) — adding a signal
+  without a descriptor breaks loudly. Code holds the fn-name → pure-fn dispatch map.
+- Note: `resolveFirm`'s module-level `_matcherConfig` (via `setMatcherData`) is a
+  weaker (non-per-call) config seam — which is why `matchReason` isn't drift-checked
+  and is covered by the `dedup_resolved_has_match_reason` invariant instead.
+
 ## Other existing config
 - `icp_filter_config` — min AUM / turnover / positions, excluded segments.
 - `size_tier_config` — AUM band thresholds.
