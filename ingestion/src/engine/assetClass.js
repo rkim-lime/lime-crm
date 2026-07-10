@@ -248,11 +248,22 @@ export async function computeAssetClassForProspect(ctx, prospectId, firmSignal, 
   const filingList = filings ?? [];
   let holdingsByFiling = {};
   if (filingList.length) {
-    const { data: holdings } = await supabase
-      .from('prospect_holdings')
-      .select('filing_id, cusip, issuer_name, value_usd, class_title, put_call')
-      .in('filing_id', filingList.map(f => f.id));
-    for (const h of holdings ?? []) (holdingsByFiling[h.filing_id] ??= []).push(h);
+    // Paginate — a plain .in() caps at PostgREST's 1000-row limit, which for a
+    // large filer (e.g. a filing with 3800 holdings) silently truncates the book
+    // and corrupts the value-weighted breakdown, served_fraction, and churn.
+    const filingIds = filingList.map(f => f.id);
+    let offset = 0;
+    while (true) {
+      const { data: holdings } = await supabase
+        .from('prospect_holdings')
+        .select('id, filing_id, cusip, issuer_name, value_usd, class_title, put_call')
+        .in('filing_id', filingIds)
+        .order('id', { ascending: true })
+        .range(offset, offset + 999);
+      for (const h of holdings ?? []) (holdingsByFiling[h.filing_id] ??= []).push(h);
+      if (!holdings || holdings.length < 1000) break;
+      offset += 1000;
+    }
   }
 
   // Activity metrics across the filing history

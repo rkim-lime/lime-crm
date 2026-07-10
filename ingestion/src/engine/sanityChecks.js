@@ -355,10 +355,13 @@ export function runChecks(data, definitions) {
 const AUDIT_FILTER = { column: 'is_audit_only', value: false }; // structural, not per-check
 
 async function loadAll(supabase) {
-  const page = async (table, select, extra = q => q) => {
+  // NB: range pagination REQUIRES a stable order — without it PostgREST can
+  // drop/duplicate rows across page boundaries (silently corrupting any
+  // >1000-row load, e.g. prospect_holdings → wrong churn re-derivation).
+  const page = async (table, select, orderCol = 'id', extra = q => q) => {
     let rows = [], offset = 0;
     while (true) {
-      let q = supabase.from(table).select(select).range(offset, offset + 999);
+      let q = supabase.from(table).select(select).order(orderCol, { ascending: true }).range(offset, offset + 999);
       const { data } = await extra(q);
       rows.push(...(data ?? []));
       if (!data || data.length < 1000) break;
@@ -370,9 +373,9 @@ async function loadAll(supabase) {
   const prospects = await page(
     'prospects',
     'id, firm_name, source, estimated_aum_usd, position_count, portfolio_turnover_pct, equities_pct, options_present, inferred_segment, segment_canonical, aum_canonical, aum_basis, aum_source, aum_as_of, size_tier, signal_completeness, normalized_signals, asset_class_relevance, asset_class_breakdown, asset_class_served_fraction, fit_score',
-    q => q.eq(AUDIT_FILTER.column, AUDIT_FILTER.value),
+    'id', q => q.eq(AUDIT_FILTER.column, AUDIT_FILTER.value),
   );
-  const sources = await page('prospect_sources', 'prospect_id, source, signals');
+  const sources = await page('prospect_sources', 'prospect_id, source, signals', 'prospect_id');
   const byProspect = {};
   for (const s of sources) (byProspect[s.prospect_id] ??= {})[s.source] = s.signals ?? {};
   for (const p of prospects) p.sources_by_key = byProspect[p.id] ?? {};
