@@ -11,13 +11,18 @@ import { useDeals } from '../../hooks/useDeals';
 import { useProspects, useProspect } from '../../hooks/useProspects';
 import { fmtRelTime, ErrorBanner } from '../shared';
 import { useICPConfig, useUpdateICPConfig } from '../../hooks/useDedup';
+import { useIsAdmin } from '../../components/RoleGate';
+import { RelevanceConfigPanel, SegmentsConfigPanel, MatcherConfigPanel } from './ConfigSurfaces';
 
 const TAB_GROUPS = [
   { label: 'Enterprise & Pro', types: ['deal', 'account_health'] },
   { label: 'Individual',       types: ['lead', 'contact_health'] },
   { label: 'Prospecting',      types: ['prospect_fit', 'icp_criteria'] },
+  { label: 'Prospecting Config', types: ['cfg_relevance', 'cfg_segments', 'cfg_matcher'] },
 ];
-const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types).filter(t => t !== 'icp_criteria');
+// Scoring-criteria tabs only (config tabs render their own panels, not the weights UI).
+const CONFIG_TABS = ['cfg_relevance', 'cfg_segments', 'cfg_matcher'];
+const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types).filter(t => t !== 'icp_criteria' && !CONFIG_TABS.includes(t));
 const SCORE_LABELS = {
   deal:           'Deal Score',
   account_health: 'Account Health',
@@ -25,6 +30,9 @@ const SCORE_LABELS = {
   contact_health: 'Contact Health',
   prospect_fit:   'Prospect Fit',
   icp_criteria:   'ICP Criteria',
+  cfg_relevance:  'Asset-Class Relevance',
+  cfg_segments:   'Segments & ICP',
+  cfg_matcher:    'Matcher',
 };
 
 const PROSPECT_CRITERION_LABELS = {
@@ -617,6 +625,7 @@ export default function ScoringConfig() {
   const [showModal, setShowModal]   = useState(false);
   const [savedWeights, setSavedWeights] = useState({});
 
+  const isAdmin    = useIsAdmin();
   const config     = useScoringConfig();
   const saveConfig = useUpdateScoringConfig();
 
@@ -709,6 +718,12 @@ export default function ScoringConfig() {
 
       {activeTab === 'icp_criteria' ? (
         <ICPCriteriaTab />
+      ) : activeTab === 'cfg_relevance' ? (
+        <RelevanceConfigPanel canEdit={isAdmin} />
+      ) : activeTab === 'cfg_segments' ? (
+        <SegmentsConfigPanel canEdit={isAdmin} />
+      ) : activeTab === 'cfg_matcher' ? (
+        <MatcherConfigPanel canEdit={isAdmin} />
       ) : config.isLoading ? (
         <div className="skeleton skeleton-text" style={{ width: '60%', margin: '20px 0' }} />
       ) : (
