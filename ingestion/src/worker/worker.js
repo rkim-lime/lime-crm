@@ -158,13 +158,16 @@ async function executeJob(run) {
   let succeeded = false;
   const gitSha = resolveGitSha();
   try {
-    const stats = await runConnector(jobType, config, { supabase, logger, onProgress });
+    const stats = await runConnector(jobType, config, { supabase, logger, onProgress, jobRunId: run.id });
 
     // ── Post-job sanity checks (between runConnector's return and mark-completed) ──
     let finalStatus = 'completed';
     let sanityError = null;
     try {
-      const rowsChanged = (stats.prospects ?? 0) + (stats.merges ?? 0) + (stats.accountMatches ?? 0) + (stats.dupes ?? 0);
+      // Backfills report rows_changed explicitly (actually-changed rows); connectors
+      // don't set it, so fall back to the ingest-side sum.
+      const rowsChanged = stats.rows_changed
+        ?? ((stats.prospects ?? 0) + (stats.merges ?? 0) + (stats.accountMatches ?? 0) + (stats.dupes ?? 0));
       const { overall, sanity } = await runSanityChecks({ supabase, logger }, { jobRunId: run.id, gitSha, rowsChanged });
       stats.sanity = sanity;
       finalStatus  = overall; // completed | completed_with_warnings | failed

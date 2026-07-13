@@ -9,6 +9,7 @@ import {
   saveFitScore,
 }                              from './writers.js';
 import { normalizeFirm, loadNormalizationRefs } from './normalize.js';
+import { runBackfillNormalize, runBackfillFitScores } from './backfills.js';
 import { supabase as defaultSupabase } from '../supabaseClient.js';
 import { logger   as defaultLogger   } from '../utils/logger.js';
 
@@ -46,6 +47,17 @@ export async function runConnector(connectorKey, config = {}, ctx = {}) {
   const supabase   = ctx.supabase   ?? defaultSupabase;
   const logger     = ctx.logger     ?? defaultLogger;
   const onProgress = ctx.onProgress ?? null;
+
+  // Recompute backfills share this dispatch entry point (executeJob calls
+  // runConnector(jobType, …)). They re-derive stored data via the SAME engine
+  // functions the connectors use — no ingest, no external fetch. Returns stats
+  // in the same shape flow so the post-job sanity hook runs unchanged.
+  if (connectorKey === 'backfill_normalize') {
+    return runBackfillNormalize({ supabase, logger, onProgress, jobRunId: ctx.jobRunId ?? null });
+  }
+  if (connectorKey === 'backfill_fit_scores') {
+    return runBackfillFitScores({ supabase, logger, onProgress, jobRunId: ctx.jobRunId ?? null });
+  }
 
   const connector = getConnector(connectorKey);
   if (!connector) throw new Error(`No connector registered for key: ${connectorKey}`);
