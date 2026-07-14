@@ -5,6 +5,9 @@ import { usePendingUsers } from '../hooks/usePendingUsers';
 import { useOwnershipHygieneCount } from '../hooks/useOwnershipHygiene';
 import { useDedupQueueCount } from '../hooks/useDedup';
 
+// Injected at build time in vite.config.js (Vercel commit SHA, local git, or 'dev').
+const BUILD_SHA = import.meta.env.VITE_BUILD_SHA ?? 'dev';
+
 const STATIC_NAV_SECTIONS = [
   {
     label: 'Workspace',
@@ -219,6 +222,15 @@ export default function Layout({ title, children }) {
           <button className="sidebar-item w-full mt-1" style={{ color: 'var(--red)' }} onClick={handleSignOut}>
             <Icon ch="→" /> Sign out
           </button>
+          <div
+            title={`Build ${BUILD_SHA}`}
+            style={{
+              fontSize: 10, color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)',
+              padding: '6px 10px 0', userSelect: 'text', letterSpacing: .3,
+            }}
+          >
+            build {BUILD_SHA}
+          </div>
         </div>
       </aside>
 
