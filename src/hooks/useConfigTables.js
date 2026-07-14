@@ -120,7 +120,7 @@ export function useSegmentNameSignals() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('segment_name_signals')
-        .select('id, pattern, target_segment, signal_kind, vetoes_hedge_fund, confidence, sort_order, is_active')
+        .select('id, pattern, target_segment, signal_kind, vetoes_hedge_fund, confidence, sort_order, is_active, promote_from')
         .order('sort_order');
       if (error) throw error;
       return data ?? [];
