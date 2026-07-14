@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { ErrorBanner } from '../shared';
 import ConfirmModal from '../../components/ConfirmModal';
 import {
@@ -12,6 +13,9 @@ import {
 } from '../../hooks/useConfigTables';
 import { useRelevancePreviewFirms, useSegmentPreviewFirms, useFirmNames } from '../../hooks/usePreviewData';
 import { useICPConfig, useUpdateICPConfig } from '../../hooks/useDedup';
+import { useStaleness, useRecomputeNow, useChangeLog } from '../../hooks/useConfigGovernance';
+import { recomputeGroup, stalenessMessage } from './recompute';
+import { filterChangeLog, distinctValues, describeChange, formatRowKey } from './changeLog';
 import {
   RELEVANCE_FIELDS, coerceValue, isMatcherEditable,
   ADV_VERDICTS, VERDICT_ACTIONS, CONFIDENCES,
@@ -593,12 +597,154 @@ function ExcludedSegmentsEditor({ canEdit }) {
   );
 }
 
+// ── Staleness banner + recompute (C4) ─────────────────────────────────────────
+
+// After a config save the derived data reflects the OLD settings until a
+// recompute runs. This banner surfaces that and enqueues the right backfill
+// (relevance/segment → normalize; fit → fit-scores). It polls while the run is
+// in flight and clears itself once the recompute completes (staleness re-derives).
+function RecomputeBanner({ surface, canEdit }) {
+  const group = recomputeGroup(surface);
+  const staleQ = useStaleness(group);
+  const recompute = useRecomputeNow(group);
+  if (!group) return null;
+  const s = staleQ.data;
+  if (!s || (!s.stale && !s.active)) return null;
+
+  const wrap = {
+    display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+    background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: 6,
+    padding: '10px 14px', marginBottom: 18, fontSize: 13, color: '#92400e',
+  };
+
+  if (s.active) {
+    return (
+      <div style={wrap}>
+        <span style={{ fontSize: 14 }}>⟳</span>
+        <span style={{ flex: 1 }}><strong>Recompute running…</strong> re-deriving {group.label}.</span>
+        <Link to="/settings/pipelines" style={{ color: '#b45309', fontWeight: 600 }}>Watch in Data Pipelines →</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div style={wrap}>
+      <span style={{ fontSize: 14 }}>⚠</span>
+      <span style={{ flex: 1 }}>{stalenessMessage(s.affected)} Recompute re-derives {group.label}.</span>
+      {canEdit && (
+        <button className="btn btn-sm btn-warning" disabled={recompute.pending || !recompute.ready} onClick={() => recompute.run()}>
+          {recompute.pending ? 'Queuing…' : 'Recompute now'}
+        </button>
+      )}
+      <Link to="/settings/pipelines" style={{ color: '#b45309', fontWeight: 600 }}>Data Pipelines →</Link>
+      {recompute.error && <div style={{ flexBasis: '100%', color: 'var(--red)', fontSize: 12 }}>{recompute.error.message}</div>}
+    </div>
+  );
+}
+
+// ── Change-log viewer (C4) ────────────────────────────────────────────────────
+
+const ACTION_COLOR = {
+  insert: 'var(--green)', update: 'var(--text-secondary)', delete: 'var(--red)',
+  activate: 'var(--green)', deactivate: 'var(--amber, #b45309)',
+};
+
+export function ChangeLogPanel({ canEdit }) {
+  const q = useChangeLog({ limit: 500 });
+  const [table, setTable] = useState('');
+  const [actor, setActor] = useState('');
+  const [since, setSince] = useState('');
+  const [until, setUntil] = useState('');
+
+  if (q.isLoading) return <div className="skeleton skeleton-text" style={{ width: '70%' }} />;
+  if (q.error) return <ErrorBanner message={q.error.message} />;
+
+  const rows = q.data ?? [];
+  const tables = distinctValues(rows, 'table_name');
+  const actors = distinctValues(rows, 'actor_label');
+  // `until` is an inclusive calendar day → extend the bound to end-of-day.
+  const untilBound = until ? new Date(new Date(`${until}T00:00:00`).getTime() + 86_400_000).toISOString() : undefined;
+  const filtered = filterChangeLog(rows, {
+    table: table || undefined, actor: actor || undefined,
+    since: since ? `${since}T00:00:00` : undefined, until: untilBound,
+  });
+
+  const selStyle = { padding: '5px 8px', fontSize: 12.5 };
+
+  return (
+    <SectionCard
+      title="Configuration change log"
+      subtitle="config_change_log — append-only, trigger-written. Captures UI edits (attributed to the admin) and direct-SQL edits (actor 'postgres') alike. Admin-only."
+    >
+      {!canEdit && <ReadOnlyNotice />}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 14 }}>
+        <label style={{ ...LABEL }}>Table<br />
+          <select className="form-input" style={selStyle} value={table} onChange={(e) => setTable(e.target.value)}>
+            <option value="">All tables</option>
+            {tables.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </label>
+        <label style={{ ...LABEL }}>Actor<br />
+          <select className="form-input" style={selStyle} value={actor} onChange={(e) => setActor(e.target.value)}>
+            <option value="">All actors</option>
+            {actors.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </label>
+        <label style={{ ...LABEL }}>From<br />
+          <input className="form-input" style={selStyle} type="date" value={since} onChange={(e) => setSince(e.target.value)} />
+        </label>
+        <label style={{ ...LABEL }}>To<br />
+          <input className="form-input" style={selStyle} type="date" value={until} onChange={(e) => setUntil(e.target.value)} />
+        </label>
+        {(table || actor || since || until) && (
+          <button className="btn btn-sm btn-ghost" onClick={() => { setTable(''); setActor(''); setSince(''); setUntil(''); }}>Clear</button>
+        )}
+      </div>
+
+      <div style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+        {filtered.length} of {rows.length} entries{rows.length >= 500 ? ' (most recent 500)' : ''}
+      </div>
+
+      <div className="table-wrap" style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', fontSize: 12.5, width: '100%' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+              <th style={TH}>When</th>
+              <th style={TH}>Actor</th>
+              <th style={TH}>Table</th>
+              <th style={TH}>Row</th>
+              <th style={TH}>Change</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={5} style={{ ...TD, color: 'var(--text-tertiary)', padding: '16px 0' }}>No matching entries.</td></tr>
+            ) : filtered.map((r) => (
+              <tr key={r.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <td style={{ ...TD, whiteSpace: 'nowrap', color: 'var(--text-secondary)' }}>{new Date(r.created_at).toLocaleString()}</td>
+                <td style={{ ...TD, whiteSpace: 'nowrap' }}>{r.actor_label ?? '—'}</td>
+                <td style={{ ...TD, ...MONO, whiteSpace: 'nowrap' }}>{r.table_name}</td>
+                <td style={{ ...TD, ...MONO, color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{formatRowKey(r.row_key)}</td>
+                <td style={{ ...TD }}>
+                  <span style={{ color: ACTION_COLOR[r.action] ?? 'var(--text-secondary)', fontWeight: 600, marginRight: 6, textTransform: 'uppercase', fontSize: 10.5 }}>{r.action}</span>
+                  <span style={MONO}>{describeChange(r)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </SectionCard>
+  );
+}
+
 // ── Panels (one per tab) ──────────────────────────────────────────────────────
 
 export function RelevanceConfigPanel({ canEdit }) {
   return (
     <div>
       {!canEdit && <ReadOnlyNotice />}
+      <RecomputeBanner surface="relevance" canEdit={canEdit} />
       <SectionCard title="Relevance thresholds & knobs" subtitle="asset_class_relevance_config — the gate-then-score eligibility layer. Edit a threshold to preview the firm-level re-band before saving.">
         <RelevanceConfigForm canEdit={canEdit} />
       </SectionCard>
@@ -619,6 +765,7 @@ export function SegmentsConfigPanel({ canEdit }) {
   return (
     <div>
       {!canEdit && <ReadOnlyNotice />}
+      <RecomputeBanner surface="segment" canEdit={canEdit} />
       <SectionCard title="Segment name-signals" subtitle="Name → segment rules for ADV derivation. Edit a pattern and press Test for the blast radius; the preview shows how many firms change segment.">
         <SegmentSignalsList canEdit={canEdit} />
       </SectionCard>

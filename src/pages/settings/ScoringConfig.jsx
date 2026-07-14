@@ -12,16 +12,16 @@ import { useProspects, useProspect } from '../../hooks/useProspects';
 import { fmtRelTime, ErrorBanner } from '../shared';
 import { useICPConfig, useUpdateICPConfig } from '../../hooks/useDedup';
 import { useIsAdmin } from '../../components/RoleGate';
-import { RelevanceConfigPanel, SegmentsConfigPanel, MatcherConfigPanel } from './ConfigSurfaces';
+import { RelevanceConfigPanel, SegmentsConfigPanel, MatcherConfigPanel, ChangeLogPanel } from './ConfigSurfaces';
 
 const TAB_GROUPS = [
   { label: 'Enterprise & Pro', types: ['deal', 'account_health'] },
   { label: 'Individual',       types: ['lead', 'contact_health'] },
   { label: 'Prospecting',      types: ['prospect_fit', 'icp_criteria'] },
-  { label: 'Prospecting Config', types: ['cfg_relevance', 'cfg_segments', 'cfg_matcher'] },
+  { label: 'Prospecting Config', types: ['cfg_relevance', 'cfg_segments', 'cfg_matcher', 'cfg_changelog'] },
 ];
 // Scoring-criteria tabs only (config tabs render their own panels, not the weights UI).
-const CONFIG_TABS = ['cfg_relevance', 'cfg_segments', 'cfg_matcher'];
+const CONFIG_TABS = ['cfg_relevance', 'cfg_segments', 'cfg_matcher', 'cfg_changelog'];
 const SCORE_TYPES = TAB_GROUPS.flatMap(g => g.types).filter(t => t !== 'icp_criteria' && !CONFIG_TABS.includes(t));
 const SCORE_LABELS = {
   deal:           'Deal Score',
@@ -33,6 +33,7 @@ const SCORE_LABELS = {
   cfg_relevance:  'Asset-Class Relevance',
   cfg_segments:   'Segments & ICP',
   cfg_matcher:    'Matcher',
+  cfg_changelog:  'Change Log',
 };
 
 const PROSPECT_CRITERION_LABELS = {
@@ -724,6 +725,8 @@ export default function ScoringConfig() {
         <SegmentsConfigPanel canEdit={isAdmin} />
       ) : activeTab === 'cfg_matcher' ? (
         <MatcherConfigPanel canEdit={isAdmin} />
+      ) : activeTab === 'cfg_changelog' ? (
+        <ChangeLogPanel canEdit={isAdmin} />
       ) : config.isLoading ? (
         <div className="skeleton skeleton-text" style={{ width: '60%', margin: '20px 0' }} />
       ) : (
